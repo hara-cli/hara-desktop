@@ -120,6 +120,11 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
     : ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(choice) ? t(`ws.rf.effort.${choice}` as Key) : choice;
   const statusText = (value: ReturnType<typeof engineStatus>) => value ? t(value.key as Key, { reason: value.reasonKey ? t(value.reasonKey as Key) : "" }) : "";
   const fieldText = formatList(locale, fields.map(field => t(`ws.rf.field.${field}` as Key)));
+  // The selected engine's state, said once below the dropdown. Confirming an update or a first use happens with Apply
+  // in 1.2.0 (a separate Confirm button needs Core's confirm-and-list RPC).
+  const currentVersion = form?.version ?? runtimeRow?.version;
+  const chipText = use === "confirm_update" ? currentVersion ? t("ws.rf.formStatus.confirmUpdate", { version: currentVersion }) : t("ws.rf.formStatus.confirmUpdateUnknown")
+    : use === "confirm_first_use" ? t("ws.rf.formStatus.confirmFirstUse") : statusText(status);
   const shared = form?.sharedWith.filter(row => row.agentId !== agent.agentId) ?? [];
   const chooseModel = (id: string) => {
     const next = inventory?.models.find(row => row.id === id);
@@ -186,7 +191,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
         </select>
       </label>
       <div className="vg-rf-meta" data-runtime-use={use ?? "unknown"}>
-        {status && draftRuntime !== "pi" && draftRuntime !== "hara" ? <span className={`vg-rf-chip ${use === "ready" ? "ok" : use === "unavailable" ? "fail" : "warn"}`}>{statusText(status)}</span> : null}
+        {status && draftRuntime !== "pi" && draftRuntime !== "hara" ? <span className={`vg-rf-chip ${use === "ready" ? "ok" : use === "unavailable" ? "fail" : "warn"}`} title={chipText}>{chipText}</span> : null}
         {(form?.version ?? runtimeRow?.version) ? <span>{t("ws.rf.version", { version: (form?.version ?? runtimeRow?.version)! })}</span> : null}
         {draftRuntime === "pi" ? <span className="vg-rf-chip ok">{r("piAvailable")}</span> : null}
       </div>
@@ -222,8 +227,8 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
         {draftRuntime !== "hara" ? <WorkspaceRuntimeVersion runtimeId={draftRuntime} binding={runtimeVersionFor(workspace.runtimes?.options, draftRuntime)} t={t} /> : null}
       </>}</details>
       <footer className="vg-rf-foot">
-        {fields.length ? <span className="vg-rf-chip dirty" role="status">{t("ws.rf.unsaved", { fields: fieldText })}</span>
-          : confirmNeeded ? <span className="vg-rf-chip warn" role="status">{statusText(status)}</span> : <span className="vg-rf-chip" role="status">{t("ws.rf.saved")}</span>}
+        {fields.length ? <span className="vg-rf-chip dirty" role="status" title={t("ws.rf.unsaved", { fields: fieldText })}>{t("ws.rf.unsaved", { fields: fieldText })}</span>
+          : confirmNeeded ? <span className="vg-rf-footnote" aria-hidden="true" /> : <span className="vg-rf-chip" role="status">{t("ws.rf.saved")}</span>}
         {fields.length ? <button type="button" className="vg-rf-revert" disabled={busy || scanning} onClick={() => { setDraftRuntime(agent.runtime.id); if (draftRuntime === agent.runtime.id && baseline) { setDraftModel(baseline.model); setDraftEffort(baseline.effort); } else setInitFor(""); setDropped(null); setError(""); setNotice(""); }}>{redesignText(locale, "revert")}</button> : null}
         <button type="button" className="vg-rf-apply" disabled={busy || scanning || !ready || !piModelReady || !fields.length && !confirmNeeded || !usable || draftRuntime === "hara" && draftRuntime !== agent.runtime.id} onClick={startApply}>{t(busy ? "ws.rf.applying" : "ws.rf.apply")}</button>
       </footer>

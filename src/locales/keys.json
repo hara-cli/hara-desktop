@@ -172,7 +172,10 @@
     "ws.rf.recoveryUpdatedTitle",
     "ws.rf.recoveryUpdatedBody",
     "ws.rf.recoveryConfirm",
-    "ws.rf.noAutoSwitch"
+    "ws.rf.noAutoSwitch",
+    "ws.rf.formStatus.confirmUpdate",
+    "ws.rf.formStatus.confirmUpdateUnknown",
+    "ws.rf.formStatus.confirmFirstUse"
   ],
   "CONTEXT_COMPACTION_KEYS": [
     "ws.compaction.completed",
@@ -858,6 +861,7 @@
     "ws.workScope.approval.publish",
     "ws.workScope.approval.credentials",
     "ws.workScope.approval.expand",
+    "ws.runtimeProxy.placeholder",
     "ws.connections.updated",
     "ws.connections.deleted",
     "ws.connections.reloadAfterUnknown",
@@ -866,7 +870,6 @@
     "ws.skills.copySaved",
     "ws.schedules.saved",
     "ws.schedules.deleted",
-    "ws.runtimeProxy.placeholder",
     "ws.settings.copyFailed",
     "ws.updates.copyFailed",
     "ws.action.retry"
@@ -1303,7 +1306,10 @@
     "ws.colleagues.idle",
     "ws.channels.empty.title",
     "ws.channels.empty.body",
-    "common.loading"
+    "common.loading",
+    "ws.rf.formStatus.confirmUpdate",
+    "ws.rf.formStatus.confirmUpdateUnknown",
+    "ws.rf.formStatus.confirmFirstUse"
   ],
   "WORKSPACE_EXTRA_KEYS": [
     "ws.channels.new",
@@ -2298,6 +2304,9 @@
     "ws.skills.howItWorks",
     "ws.extensions.attentionReviewOwner",
     "ws.skills.details",
+    "ws.runtimeProxy.placeholder",
+    "ws.boot.rootRefused",
+    "ws.boot.logHint",
     "ws.connections.updated",
     "ws.connections.deleted",
     "ws.connections.reloadAfterUnknown",
@@ -2306,7 +2315,6 @@
     "ws.skills.copySaved",
     "ws.schedules.saved",
     "ws.schedules.deleted",
-    "ws.runtimeProxy.placeholder",
     "ws.settings.copyFailed",
     "ws.updates.copyFailed",
     "ws.action.retry"

@@ -71,7 +71,25 @@ see [the explicit trust model](CANDIDATE_GATE_A.md).
 
 ## Evidence and remaining publication work
 
-Run tests under private HOME and short TMP without inherited Hara credentials.
+The orchestration input pins application commit `637d96b114fd32cb96736ed0982f009235e93f6d`
+(tree `507bac22fa475d4b01d634ce73bb25bef982aca4`) and Core commit
+`b11009bdcafd2367cd587a47c665dea260d69df4` (tree `302e8a288218ab0a4ec52d8ce8d88a43522cb9fb`).
+Application and orchestration are distinct source roles. These pins alone are not
+candidate execution approval or evidence that the candidate has passed.
+
+Every job explicitly provisions an owned, canonical directory beneath
+`GITHUB_WORKSPACE/candidate-evidence/<run>/<attempt>/<job>/<target>`. The target is
+explicitly `controller` for non-matrix jobs. `synthetic-home` and `tmp` are the two
+private roots; `CANDIDATE_OUTPUT_DIR` is `tmp/output`. HOME/TMPDIR and related
+authority fields are written last, and artifact uploads consume the provision
+step's canonical output path. There is no system TMP or RUNNER_TEMP fallback.
+Existing job leaves, symlinks, wrong owners, writable directories and changed
+anchor identities fail closed. All evidence is retained; there is no automatic
+removal on success, failure or cancellation. Application CI evidence wiring is
+separate from orchestration. Control-plane authentication, the independent local
+runtime adapter and platform/socket checks still require acceptance before execution.
+
+Run tests under that explicit private HOME/TMP without inherited Hara credentials.
 Mac upgrade verification uses private copies of real released old Apps.
 Linux/Windows native SDK comparator/download/signature tests are not GUI/system
 installation acceptance. Windows Authenticode remains separately unimplemented.

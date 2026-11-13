@@ -11,34 +11,19 @@
   "approverId": 23243740,
   "adminProof": {
     "pullRequest": 1,
-    "publicKeySha256": "37500d93e145d6c2bdc3aeebda84bc0ec783b041fc698d96b9b9ecd4244f87db",
+    "publicKeySha256": "6331eb23f80b77a169d04432dbc4efa33335f8015da2be51971c42d3590976f2",
     "ttlSeconds": 7200,
     "waitSeconds": 240
   },
-  "desktop": {
-    "commit": "7fccf8f652f146ecfef7b7546f3cfc52d2400205",
-    "tree": "41c4622da35b784e8bf5daf27d61bc7557915b88",
-    "version": "1.1.0"
-  },
-  "core": {
-    "commit": "77022817598135da98b7d7e0b15d0afa4c926052",
-    "tree": "0fed85aaf747c569accbfd56a88491c2ebd5f006",
-    "version": "1.0.2"
-  },
-  "toolchain": {
-    "node": "22.23.1",
-    "bun": "1.3.9",
-    "rust": "1.97.0"
-  },
+  "desktop": {"commit": "0f5eff41df9ea0299eb5c517d3e4dd154fbef534", "tree": "ecb366c910e6224f601d61be33f7208f28f52b0b", "version": "1.2.0"},
+  "core": { "commit": "a1921ccab59248e83afcf18289084e531f9021dc", "tree": "9eda6e01e73a11cbfdb3e3d123f4c70763e4b489", "version": "1.2.0" },
+  "toolchain": { "node": "22.23.1", "bun": "1.3.9", "rust": "1.97.0" },
   "locks": {
-    "npm": "6fd1eb435534a33e231890f640691c358a3a898e5af5d13b8b997a398026700d",
-    "cargo": "4934dbf876a1c314a7b5eb18d086f3560700262251f5e40382bc30a936a32500",
-    "coreNpm": "6955e11615a2e285bddc2967e182c7dbb68e654f6783508f080b7819b79f3c4d",
-    "sidecar": "329a111fdae84e2f00f3078edd35fc36f09002b338c789925b7b15d7b5a58f42"
+    "npm": "e779200f374908f6d6dcebb9e26f4f557324f1fa98be2c6366266a513d7f7a27",
+    "cargo": "befef88a37e5717f492af17b8b7a785237f479ee0eea5b150aec5e969e3a4462",
+    "coreNpm": "9dee8a697ddb2fce4136c1814317622c0bf835c9c51bc886901bccfc154d5ff1",
+    "sidecar": "80ed1a938b7d556ee20fd4fe24a51914253d9e3cfeeda4f72f7d58e517b1807d"
   },
   "updaterPublicKeySha256": "7e6a1d9c22989adb5c6991bae0fcdcbe4991dfd2e9eb67f5c08af271be6768d0",
-  "upgradeFrom": [
-    "0.1.187",
-    "1.0.3"
-  ]
+  "upgradeFrom": ["0.1.187", "1.0.3"]
 }
