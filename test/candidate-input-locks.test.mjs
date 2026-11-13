@@ -11,9 +11,9 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
 // The candidate flow was retired by Jeff on 2026-11-10 (release flow A, inbox
 // 2026-11-10-jeff-decision-release-flow-a.md). candidate-inputs.json now only keeps its historical
-// binding to the approved 1.2.0 application/Core. Desktop version and lock bytes are enforced against
+// application binding and a separately approved live Core pin. Desktop version and lock bytes are enforced against
 // the live tree only while that tree is still the candidate-bound version; a newer flow A release must
-// instead leave the binding pinned to the approved inputs. Core, sidecar, toolchain and updater-key
+// instead leave the retired Desktop binding pinned. Core, sidecar, toolchain and updater-key
 // identity stay enforced unconditionally.
 const liveVersion = () => JSON.parse(read('package.json')).version;
 const candidateBound = () => liveVersion() === INPUT.desktop.version;
@@ -26,7 +26,7 @@ function assertRetiredCandidateBinding() {
   assert.ok(newerVersion(liveVersion(), INPUT.desktop.version),
     `live Desktop ${liveVersion()} must be newer than the retired candidate binding ${INPUT.desktop.version}`);
   assert.deepEqual(INPUT.desktop, APPROVED_APP);
-  assert.deepEqual(INPUT.core, APPROVED_CORE);
+  assert.deepEqual(INPUT.core, LIVE_CORE_PIN);
 }
 
 test('candidate Core identity exactly matches the committed sidecar, not an earlier plan', () => {
@@ -62,6 +62,8 @@ test('candidate versions and updater public-key identity stay bound without read
 
 const APPROVED_APP = { commit: '0f5eff41df9ea0299eb5c517d3e4dd154fbef534', tree: 'ecb366c910e6224f601d61be33f7208f28f52b0b', version: '1.2.0' };
 const APPROVED_CORE = { commit: 'a1921ccab59248e83afcf18289084e531f9021dc', tree: '9eda6e01e73a11cbfdb3e3d123f4c70763e4b489', version: '1.2.0' };
+// The live pin advances independently of the retired workflow's historical checkout.
+const LIVE_CORE_PIN = { commit: '35965ef6cdb546c42afc8371204afebbd4024179', tree: '748c6b678e799231b58913a3e1364d34c3108584', version: '1.3.0' };
 const JOBS = ['admission', 'credential_preflight', 'native_build', 'sign_apps', 'native_dmg', 'sign_payloads', 'native_verify'];
 const MATRIX_JOBS = ['native_build', 'native_dmg', 'native_verify'];
 const workflowText = () => read('.github/workflows/candidate.yml').toString('utf8');
@@ -88,8 +90,8 @@ function checkSources(text) {
   assert.equal(orchestration.length, 7);
   for (const row of orchestration) assert.match(row, /ref: ['"]?\$\{\{ github\.sha \}\}['"]?/);
 }
-test('orchestration binds exact reviewed application and Core without a self pin', () => {
-  assert.deepEqual(INPUT.desktop, APPROVED_APP); assert.deepEqual(INPUT.core, APPROVED_CORE);
+test('retired orchestration keeps historical checkouts and the approved live Core pin', () => {
+  assert.deepEqual(INPUT.desktop, APPROVED_APP); assert.deepEqual(INPUT.core, LIVE_CORE_PIN);
   assert(!/5d670cc268b6eef6491ca2f2ad47a93ab92efe4b|000f0ae41f29945daa07176af0b035ba5f2809e7|86e3d21e4df3bc0845d74db027094a4bdfa978ee|96eb3d18a2ff7c0e6d9150c4037ccfaedcdd26b5|f9825bb629521d84aa947bedf5cdf267a950989c|9f70796c6bf1cafb109b6280acb43f02d82922a8|0731ae1416ffa3c506791d8f454ed850a5079873|b616740f8b8e2951cff8009ffeccdccecf972221|18f9bc1259a4054d9f2c6c06cc767bfd112a8d51|baef7122373d7414663dfc0b7d6e0f0b3002fc17|282101fc7ea9fc6c7cf360f97859702df2c8a8c1|df751058638421284858b3c2e0f02f4624983960|4f47f70fd4170964d0bef4978758bee38e3e2f3c|c5d218d4dea9e868c11f03b4ea344d4e375f9049|92b8983c8c8b6f0f32de0605bba14af2d8e13a5d|1bf230fd61d32350f9956ca5414cc91c6d2398d2|29ecc4ac39f929aa627147461b2d1637f775abcb|6e348d4c7a61a393d25f51109cb9e11d95c93097|9b4311a239360f30b10a1379e3fdbd3aacaa426f|2eeef45328b12809e81f1956fea194ce2cae74b2|77f22322fae14916ffd136394c1ab0798b145573|77ffddfddb578ddd809a8be89c99c20cfea41ad7|5d246014781f05a0e86ac06f1de3d499ed85d012|bf3ab648c5159a38567aa3fa36979fd9279b0fef/.test(read('candidate-inputs.json')));
   checkSources(workflowText());
 });
