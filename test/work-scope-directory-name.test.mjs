@@ -15,6 +15,13 @@ test("C5 directory names keep full paths out of the default display across host 
     [null, null, null],
     ["", "/", null],
     ["D:\\", "D:\\", null],
+    ["~/Documents/Accounts", "/Users/synthetic/Documents/Accounts", "Accounts"],
+    ["  ~/Documents/Accounts  ", "/registered/Reports", "Reports"],
+    ["~/Documents/Accounts", null, "Accounts"],
+    ["~\\Documents\\Accounts", null, "Accounts"],
+    ["~", null, null],
+    ["~/", null, null],
+    ["~finance", "/registered/Reports", "~finance"],
   ];
   for (const [label, path, expected] of cases) assert.equal(workScopeDirectoryName(label, path), expected);
 });

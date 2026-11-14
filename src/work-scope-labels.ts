@@ -10,7 +10,7 @@ export const workScopeToolLabelKey = (toolId: string): Key => tools.get(toolId) 
 /** Display only. The full Host-registered path stays available under Advanced. */
 export function workScopeDirectoryName(label: string | null, path: string | null): string | null {
   const name = label?.trim();
-  if (name && !/^(?:[\\/]|[A-Za-z]:(?:[\\/]|$))/.test(name)) return name;
+  if (name && !/^(?:[\\/]|[A-Za-z]:(?:[\\/]|$)|~(?:[\\/]|$))/.test(name)) return name;
   const leaf = (path ?? name)?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
-  return leaf && !/^[A-Za-z]:$/.test(leaf) ? leaf : null;
+  return leaf && !/^(?:[A-Za-z]:|~)$/.test(leaf) ? leaf : null;
 }
