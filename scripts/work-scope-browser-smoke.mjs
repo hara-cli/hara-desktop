@@ -27,6 +27,8 @@ assert(realpathSync(process.env.HOME).startsWith(guardRoot + "/"), "private HOME
 assert(realpathSync(scratch).startsWith(guardRoot + "/"), "scratch must be inside guard scope");
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const { startLocalWorkspaceServe } = await import(pathToFileURL(join(core, "dist/serve/local-workspace.js")).href);
+const { WorkspaceColleagueHomes } = await import(pathToFileURL(join(core, "dist/workspace/colleague-homes.js")).href);
+const { WorkspaceResourceStorage } = await import(pathToFileURL(join(core, "dist/workspace/resource-storage.js")).href);
 const documents = JSON.parse(readFileSync(join(core, "test/fixtures/agent-boundaries-v1.json"), "utf8"));
 const root = realpathSync(mkdtempSync(join(scratch, "core-"))), ownerCredential = randomBytes(32).toString("hex");
 const counters = { providers: 0, ownerReads: 0, guestDenials: 0, browserReads: 0, writesAfterSetup: 0 };
@@ -48,12 +50,12 @@ async function client() {
   clients.push(result); return result;
 }
 const denied = promise => assert.rejects(promise, error => error.data?.boundary?.code === "AUTHORITY_UNVERIFIED");
-let owner, guest, initialized, target, snapshot, agent, connectionId;
+let owner, guest, initialized, target, snapshot, agent, connectionId, directoryPath;
 async function bootstrap(mode) {
   if (mode !== "owner") return { snapshot, agent, target, capabilities: mode === "guest" ? initialized.capabilities : [], connectionId: "untrusted", view: null };
   const view = await owner.request("workspace.boundaries.get", { workspaceId: target.workspaceId, agentId: target.agentId }); counters.ownerReads++;
-  assert.equal(typeof snapshot.colleagueHome.path, "string");
-  const resourceDescriptions = view.policy.resources.map(ref => ({ ...ref, label: "Accounts", path: snapshot.colleagueHome.path }));
+  assert.equal(typeof directoryPath, "string");
+  const resourceDescriptions = view.policy.resources.map(ref => ({ ...ref, label: "Accounts", path: directoryPath }));
   return { snapshot, agent, target, capabilities: initialized.capabilities, connectionId, view, resourceDescriptions };
 }
 function send(method, params = {}, scoped = true) { return requestCdp(socket, pending, { id: ++serial, method, params, sessionId: scoped ? sessionId : undefined, step, timeoutMs: method === "Page.navigate" ? 30000 : 15000 }); }
@@ -79,6 +81,12 @@ try {
   const created = await owner.request("workspace.create", { label: "C5 synthetic private workspace", expectedRevision: initialized.workspace.revision });
   const params = { workspaceId: created.workspaceId, expectedGeneration: created.resourceGeneration, agentId: created.selectedAgentId };
   const prepared = await owner.request("workspace.boundaries.prepareProject", params);
+  // Main Hara has no colleagueHome in its UI snapshot. Read the same actual registered
+  // home view used by this C1-only Host, without creating or inferring a fallback folder.
+  const homes = new WorkspaceColleagueHomes(new WorkspaceResourceStorage(join(root, "home"), prepared.context.scope), join(root, "project", params.workspaceId));
+  const registeredHome = homes.view(params.agentId);
+  assert(registeredHome.created && registeredHome.available);
+  directoryPath = realpathSync(registeredHome.path);
   const duty = structuredClone(documents.valid.find(row => row.name === "duty").document), boundary = structuredClone(documents.valid.find(row => row.name === "boundary").document);
   for (const document of [duty, boundary]) { document.context = prepared.context; document.agentId = params.agentId; }
   duty.publicProfile = { title: 'Synthetic work scope <img src=x onerror="window.__C5_XSS=1">', description: "整理本人的资料与对话。 Duties describe work; actions still require current checks.", owns: ["梳理资料、整理结论", "Prepare a weekly summary with clearly cited sources"], rejects: ["不发布、不付款，也不修改线上服务"] };
@@ -142,7 +150,6 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('${card} .hd-work-scope-section').length`), 4);
   assert.equal(await evaluate(`!!document.querySelector('${card} img') || !!window.__C5_XSS`), false);
   assert.equal(await evaluate(`document.querySelector('${card} details').open`), false);
-  const directoryPath = snapshot.colleagueHome.path;
   assert.equal(await evaluate(`document.querySelector('${card} .hd-work-scope-directories strong').textContent`), "Accounts");
   assert.equal(await evaluate(`document.querySelector('${card} .hd-work-scope-directories').textContent.includes(${JSON.stringify(directoryPath)})`), false);
   assert.equal(await evaluate(`document.querySelector('${card}').innerText.includes(${JSON.stringify(directoryPath)})`), false, "The collapsed default card must not disclose the full path");
