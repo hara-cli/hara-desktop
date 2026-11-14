@@ -28,7 +28,7 @@ assert(realpathSync(scratch).startsWith(guardRoot + "/"), "scratch must be insid
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const { startLocalWorkspaceServe } = await import(pathToFileURL(join(core, "dist/serve/local-workspace.js")).href);
 const { WorkspaceColleagueHomes } = await import(pathToFileURL(join(core, "dist/workspace/colleague-homes.js")).href);
-const { WorkspaceResourceStorage } = await import(pathToFileURL(join(core, "dist/workspace/resource-storage.js")).href);
+const { WorkspaceResourceStorage, currentWorkspaceResourceBinding } = await import(pathToFileURL(join(core, "dist/workspace/resource-context.js")).href);
 const documents = JSON.parse(readFileSync(join(core, "test/fixtures/agent-boundaries-v1.json"), "utf8"));
 const root = realpathSync(mkdtempSync(join(scratch, "core-"))), ownerCredential = randomBytes(32).toString("hex");
 const counters = { providers: 0, ownerReads: 0, guestDenials: 0, browserReads: 0, writesAfterSetup: 0 };
@@ -83,7 +83,9 @@ try {
   const prepared = await owner.request("workspace.boundaries.prepareProject", params);
   // Main Hara has no colleagueHome in its UI snapshot. Read the same actual registered
   // home view used by this C1-only Host, without creating or inferring a fallback folder.
-  const homes = new WorkspaceColleagueHomes(new WorkspaceResourceStorage(join(root, "home"), prepared.context.scope), join(root, "project", params.workspaceId));
+  const storage = new WorkspaceResourceStorage(join(root, "home"), prepared.context.scope); storage.initialize();
+  storage.run(() => assert.deepEqual(currentWorkspaceResourceBinding(), prepared.context.resourceBinding));
+  const homes = new WorkspaceColleagueHomes(storage, join(root, "project", params.workspaceId));
   const registeredHome = homes.view(params.agentId);
   assert(registeredHome.created && registeredHome.available);
   directoryPath = realpathSync(registeredHome.path);
