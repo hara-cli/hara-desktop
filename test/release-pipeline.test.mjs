@@ -129,7 +129,9 @@ test("desktop updater uses the first-party signed channel before GitHub", () => 
 
   const native = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
   for (const endpoint of endpoints) assert.match(native, new RegExp(endpoint.replaceAll(".", "\\.")));
-  const context = native.indexOf("let mut context = tauri::generate_context!()");
+  assert.match(native, /fn desktop_context<R: tauri::Runtime>\(\) -> tauri::Context<R> \{\s*tauri::generate_context!\(\)/);
+  assert.equal((native.match(/tauri::generate_context!\(\)/g) ?? []).length, 1, "macOS embeds one Info.plist symbol");
+  const context = native.indexOf("let mut context = desktop_context()");
   const diagnostic = native.indexOf("release_updater_endpoints(context.config())", context);
   const build = native.indexOf(".build(context)", diagnostic);
   assert.ok(context >= 0 && diagnostic > context && build > diagnostic);

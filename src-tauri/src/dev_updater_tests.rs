@@ -83,7 +83,7 @@ fn app(identifier: &str, endpoint: &str) -> tauri::App<MockRuntime> {
     context.config_mut().plugins.0.insert(
         "updater".into(),
         serde_json::json!({
-            "endpoints":[endpoint],"pubkey":"fixture-only","dangerousInsecureTransport":true
+            "endpoints":[endpoint],"pubkey":"fixture-only","dangerousInsecureTransportProtocol":true
         }),
     );
     let app = dev_updater::register_public_updater(mock_builder(), identifier)
