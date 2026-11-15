@@ -38,10 +38,10 @@ export async function withEngineOffline<T>(primary: () => Promise<T>, offline: T
 
 /** Updater for the startup-failure screen, where no engine RPC exists at all. */
 export function createEngineFreeUpdater(deps: { check(): Promise<UpdateHandle | null>; engineStopped(): Promise<boolean>; restart(): Promise<void>;
-  storage: Storage | null; error(error: unknown): string; now?: () => number }) {
+  storage: Storage | null; error(error: unknown): string; now?: () => number; publicUpdatesAllowed?: () => boolean }) {
   const stopped = () => deps.engineStopped().catch(() => false);
   return new WorkspaceUpdater({
-    check: deps.check, restart: deps.restart, error: deps.error, now: deps.now,
+    check: deps.check, restart: deps.restart, error: deps.error, now: deps.now, publicUpdatesAllowed: deps.publicUpdatesAllowed,
     load: async () => readLocalUpdatePreferences(deps.storage),
     save: async value => writeLocalUpdatePreferences(deps.storage, value),
     activity: async () => ({ running: await stopped() ? 0 : 1 }),

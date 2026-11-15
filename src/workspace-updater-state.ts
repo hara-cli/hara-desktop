@@ -26,7 +26,7 @@ export function shouldNotify(version: string, prefs: UpdatePreferences, now: num
 export function hasUpdateAttention(view: UpdateView) { return view.phase === "ready" || view.phase === "available"
   && !(view.preferences.skippedVersion && !newerVersion(view.version, view.preferences.skippedVersion)); }
 interface Dependencies { check(): Promise<UpdateHandle | null>; load(): Promise<UpdatePreferences>; save(value: UpdatePreferences): Promise<void>;
-  activity(): Promise<{ running: number }>; prepare(): Promise<{ id: string }>; release(id: string): Promise<void>; restart(): Promise<void>; error(error: unknown): string; now?: () => number }
+  activity(): Promise<{ running: number }>; prepare(): Promise<{ id: string }>; release(id: string): Promise<void>; restart(): Promise<void>; error(error: unknown): string; now?: () => number; publicUpdatesAllowed?: () => boolean }
 /** One owner for timers, checks and signed downloads. No background install or automatic resend. */
 export class WorkspaceUpdater {
   private value: UpdateView = { phase: "latest", version: "", notes: "", downloaded: 0, total: null, notice: false, message: "", preferences: updateDefaults(), installing: false };
@@ -46,6 +46,7 @@ export class WorkspaceUpdater {
   private now() { return this.deps.now?.() ?? Date.now(); }
   private update(next: Partial<UpdateView>) { if (this.disposed) return; this.value = { ...this.value, ...next }; this.listeners.forEach(listener => listener()); }
   async start() {
+    if (this.deps.publicUpdatesAllowed?.() === false) return;
     const owner = ++this.lifecycle; this.disposed = false; clearTimeout(this.first); clearInterval(this.timer);
     try { const preferences = await this.deps.load(); if (this.disposed || owner !== this.lifecycle) return; this.update({ preferences }); }
     catch { if (this.disposed || owner !== this.lifecycle) return; this.update({ preferences: { ...updateDefaults(), autoCheck: false }, message: "ws.updates.preferencesUnread" }); }
@@ -62,6 +63,7 @@ export class WorkspaceUpdater {
   }
   async setAutoCheck(value: boolean) { await this.persist({ autoCheck: value }); this.nextCheck = value ? this.now() + 30000 : Infinity; }
   async check(manual = true) {
+    if (this.deps.publicUpdatesAllowed?.() === false) return;
     if (this.operation || this.disposed || this.value.phase === "ready" || this.value.phase === "downloading") return;
     this.operation = true; const previous = this.handle; this.handle = null;
     this.update({ phase: "checking", message: "", notice: false, version: "", notes: "" });
@@ -79,6 +81,7 @@ export class WorkspaceUpdater {
   async later() { if (!this.value.version) return; this.update({ notice: false }); await this.persist({ snooze: { version: this.value.version, until: this.now() + 86400000 } }); }
   async skip() { if (!this.value.version || this.value.phase !== "available") return; this.update({ notice: false }); await this.persist({ skippedVersion: this.value.version }); }
   async download() {
+    if (this.deps.publicUpdatesAllowed?.() === false) return;
     if (this.operation || this.value.phase !== "available" || !this.handle || this.disposed) return;
     this.operation = true; const handle = this.handle; this.update({ phase: "downloading", downloaded: 0, total: null, notice: false, message: "" });
     try {
@@ -96,6 +99,7 @@ export class WorkspaceUpdater {
     finally { this.operation = false; }
   }
   async restart() {
+    if (this.deps.publicUpdatesAllowed?.() === false) return;
     if (this.operation || this.value.phase !== "ready" || !this.handle || this.disposed) return;
     this.operation = true; let lease: { id: string } | undefined;
     try {

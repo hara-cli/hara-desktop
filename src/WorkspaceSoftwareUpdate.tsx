@@ -12,7 +12,7 @@ import { ToggleSwitch } from "./ToggleSwitch";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 import { createEngineFreeUpdater, engineUnreachable, readLocalUpdatePreferences, withEngineOffline, writeLocalUpdatePreferences } from "./workspace-update-offline";
 
-export interface DesktopVersionInfo { desktop: string; engine: string; channel: string; arch: string; isolatedCandidate?: boolean }
+export interface DesktopVersionInfo { desktop: string; engine: string; channel: string; arch: string; isolatedCandidate?: boolean; isolatedDevelopment?: boolean }
 const updaterErrorKey = (error: unknown) => error instanceof DesktopUpdaterArchitectureError ? "ws.updates.archMismatch"
   : /signature|minisign|verification/i.test(String(error)) ? "ws.updates.signatureFailed"
   : "ws.updates.networkFailed";
@@ -21,6 +21,7 @@ const webStorage = () => { try { return localStorage; } catch { return null; } }
 export function useWorkspaceUpdater(model: WorkspaceDevModel, enabled: boolean) {
   const [controller] = useState(() => new WorkspaceUpdater({
     check: () => checkDesktopUpdate(),
+    publicUpdatesAllowed: () => !infoRef.current?.isolatedDevelopment,
     load: async () => {
       // A lost engine must not silently switch automatic checks off (HARA-FB-001698).
       let value: ReturnType<typeof updateDefaults>; try { value = (await model.preferences()).updates ?? updateDefaults(); }
@@ -41,8 +42,8 @@ export function useWorkspaceUpdater(model: WorkspaceDevModel, enabled: boolean) 
   }));
   const [info, setInfo] = useState<DesktopVersionInfo | null>(null);
   const infoRef = useRef<DesktopVersionInfo | null>(null);
-  useEffect(() => { let active = true; if (enabled && isTauri()) void invoke<DesktopVersionInfo>("desktop_update_info").then(value => { if (active) { setInfo(value); infoRef.current = value; if (enabled && !value.isolatedCandidate) void controller.start(); } }).catch(() => {});
-    const wake = () => { if (enabled && infoRef.current && !infoRef.current.isolatedCandidate && document.visibilityState !== "hidden") void controller.wake(); };
+  useEffect(() => { let active = true; if (enabled && isTauri()) void invoke<DesktopVersionInfo>("desktop_update_info").then(value => { if (active) { setInfo(value); infoRef.current = value; if (enabled && !value.isolatedCandidate && !value.isolatedDevelopment) void controller.start(); } }).catch(() => {});
+    const wake = () => { if (enabled && infoRef.current && !infoRef.current.isolatedCandidate && !infoRef.current.isolatedDevelopment && document.visibilityState !== "hidden") void controller.wake(); };
     window.addEventListener("focus", wake); document.addEventListener("visibilitychange", wake);
     return () => { active = false; window.removeEventListener("focus", wake); document.removeEventListener("visibilitychange", wake); controller.dispose(); };
   }, [controller, enabled]);
@@ -50,17 +51,22 @@ export function useWorkspaceUpdater(model: WorkspaceDevModel, enabled: boolean) 
 }
 /** Startup-failure screen: check, download and install without any engine RPC (HARA-FB-001698). */
 export function WorkspaceBootUpdate() {
+  const [info, setInfo] = useState<DesktopVersionInfo | null>(null);
+  const infoRef = useRef<DesktopVersionInfo | null>(null);
   const [controller] = useState(() => createEngineFreeUpdater({ check: () => checkDesktopUpdate(), engineStopped,
-    restart: () => invoke("desktop_restart_for_update"), storage: webStorage(), error: updaterErrorKey }));
+    restart: () => invoke("desktop_restart_for_update"), storage: webStorage(), error: updaterErrorKey,
+    publicUpdatesAllowed: () => !infoRef.current?.isolatedDevelopment }));
   const value = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const { t } = useWorkspaceLocale();
   useEffect(() => { let active = true;
     if (isTauri()) void invoke<DesktopVersionInfo>("desktop_update_info").then(async info => {
-      if (!active || info.isolatedCandidate) return; await controller.start();
+      if (!active) return; setInfo(info); infoRef.current = info;
+      if (info.isolatedCandidate || info.isolatedDevelopment) return; await controller.start();
       if (active && controller.getSnapshot().preferences.autoCheck) void controller.check(false);
     }).catch(() => {});
     return () => { active = false; controller.dispose(); };
   }, [controller]);
+  if (info?.isolatedDevelopment) return <DevelopmentUpdateVersion info={info} />;
   const title: Record<typeof value.phase, Key> = { latest: value.preferences.lastChecked ? "ws.updates.latest" : "ws.updates.checkTitle", checking: "ws.updates.checking",
     available: "ws.updates.available", downloading: "ws.updates.downloading", ready: "ws.updates.ready", error: "ws.updates.failed" };
   return <section className="wsd-boot-update" data-update-state={value.phase} aria-live="polite">
@@ -83,6 +89,7 @@ export function WorkspaceSoftwareUpdate({ controller, info }: { controller: Work
     try { await navigator.clipboard.writeText(`Hara Desktop ${info.desktop}\nCore ${info.engine}\n${info.channel} / ${info.arch}`); setCopied(true); }
     catch { setCopied(false); setCopyFailed(true); }
   };
+  if (info?.isolatedDevelopment) return <DevelopmentUpdateVersion info={info} onCopyVersion={copyVersion} copied={copied} copyFailed={copyFailed} />;
   if (info?.isolatedCandidate) return <section className="wss-page-card"><h2>{t("ws.updates.candidate")}</h2><p>{t("ws.updates.candidateNote")}</p>
     <dl><dt>Desktop</dt><dd>{info.desktop}</dd><dt>{t("ws.updates.engine")}</dt><dd>{info.engine}</dd><dt>{t("ws.updates.channel")}</dt><dd>{info.channel}</dd><dt>{t("ws.updates.arch")}</dt><dd>{info.arch}</dd></dl>
     <button onClick={() => void copyVersion()}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button><SettingsActionResult text={copyFailed ? t("ws.updates.copyFailed") : ""} error /></section>;
@@ -111,6 +118,17 @@ export function WorkspaceSoftwareUpdate({ controller, info }: { controller: Work
     <section className="wss-version"><h3>{t("ws.updates.versionForReports")}</h3><dl><dt>Desktop</dt><dd>{info?.desktop ?? "—"}</dd><dt>{t("ws.updates.engine")}</dt><dd>{info?.engine ?? "—"}</dd><dt>{t("ws.updates.channel")}</dt><dd>{info?.channel ?? "—"}</dd><dt>{t("ws.updates.arch")}</dt><dd>{info?.arch ?? "—"}</dd></dl>
       <button disabled={!info} onClick={() => void copyVersion()}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button><SettingsActionResult text={copyFailed ? t("ws.updates.copyFailed") : ""} error /></section>
     </SettingsAdvanced>
+  </section>;
+}
+/** Development builds are rebuilt by the local launcher; this view has no updater actions. */
+export function DevelopmentUpdateVersion({ info, onCopyVersion, copied, copyFailed }: { info: DesktopVersionInfo; onCopyVersion?: () => Promise<void>; copied?: boolean; copyFailed?: boolean }) {
+  const { t } = useWorkspaceLocale();
+  return <section className="wss-page-card" data-update-state="development">
+    <h2>{t("ws.updates.development")}</h2>
+    <p>{t("ws.updates.developmentNote")}</p>
+    <p><code>hara-desk-dev</code></p>
+    <dl><dt>Desktop</dt><dd>{info.desktop}</dd><dt>{t("ws.updates.engine")}</dt><dd>{info.engine}</dd><dt>{t("ws.updates.arch")}</dt><dd>{info.arch}</dd></dl>
+    {onCopyVersion ? <><button onClick={() => void onCopyVersion()}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button><SettingsActionResult text={copyFailed ? t("ws.updates.copyFailed") : ""} error /></> : null}
   </section>;
 }
 export function WorkspaceUpdateNotice({ controller, onView }: { controller: WorkspaceUpdater; onView: () => void }) {

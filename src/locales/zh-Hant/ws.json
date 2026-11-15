@@ -1831,5 +1831,7 @@
   "ws.workScope.write.unavailable": "目前連線無法更改工作範圍，上方仍顯示已儲存的內容。",
   "ws.workScope.write.unknown": "結果尚未確認。請保留這次操作，並繼續查看原結果。",
   "ws.workScope.write.yes": "是",
-  "ws.settings.deviceCopy.withMacPermission": "{note}首次儲存時，系統可能要求鑰匙圈授權。"
+  "ws.settings.deviceCopy.withMacPermission": "{note}首次儲存時，系統可能要求鑰匙圈授權。",
+  "ws.updates.development": "Hara Dev 開發版",
+  "ws.updates.developmentNote": "開發版透過開發命令更新。結束 Hara Dev，再在新的終端機執行："
 }

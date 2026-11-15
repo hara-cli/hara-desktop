@@ -14,6 +14,9 @@ mod command_line_probe;
 mod system_visual_preferences;
 mod workspace_media;
 mod update_channel;
+mod dev_updater;
+#[cfg(test)]
+mod dev_updater_tests;
 #[cfg(windows)]
 mod windows_process;
 
@@ -153,8 +156,13 @@ fn desktop_updater_target() -> Option<&'static str> {
 }
 
 #[tauri::command]
-fn desktop_update_info() -> serde_json::Value {
-    serde_json::json!({ "desktop": env!("CARGO_PKG_VERSION"), "engine": BUNDLED_CLI_VERSION.trim(), "channel": if LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) { "local-candidate" } else { update_channel::channel() }, "arch": std::env::consts::ARCH, "isolatedCandidate": LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) })
+fn desktop_update_info<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> serde_json::Value {
+    let mut info = serde_json::json!({ "desktop": env!("CARGO_PKG_VERSION"), "engine": BUNDLED_CLI_VERSION.trim(), "channel": if LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) { "local-candidate" } else { update_channel::channel() }, "arch": std::env::consts::ARCH, "isolatedCandidate": LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) });
+    if dev_updater::is_development(&app.config().identifier) {
+        info["isolatedDevelopment"] = true.into();
+        info["channel"] = "development".into();
+    }
+    info
 }
 
 fn effective_update_endpoints() -> Result<Vec<String>, String> {
@@ -167,6 +175,7 @@ fn effective_update_endpoints() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 async fn desktop_check_update<R: tauri::Runtime>(webview: tauri::Webview<R>) -> Result<Option<serde_json::Value>, String> {
+    dev_updater::ensure_public_updates(&webview.config().identifier)?;
     if LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) { return Err("Local candidate cannot install public updates".into()); }
     let urls = effective_update_endpoints()?.into_iter().map(|value| tauri::Url::parse(&value).map_err(|_| "Invalid updater endpoint".to_string())).collect::<Result<Vec<_>, _>>()?;
     let mut builder = webview.updater_builder().endpoints(urls).map_err(|_| "Hara update endpoint unavailable".to_string())?
@@ -183,7 +192,10 @@ async fn desktop_check_update<R: tauri::Runtime>(webview: tauri::Webview<R>) -> 
 }
 
 #[tauri::command]
-fn desktop_restart_for_update<R: tauri::Runtime>(app: tauri::AppHandle<R>) { app.restart(); }
+fn desktop_restart_for_update<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    dev_updater::ensure_public_updates(&app.config().identifier)?;
+    app.restart();
+}
 
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -3409,7 +3421,8 @@ fn take_update_restart_marker(app: tauri::AppHandle) -> Result<bool, String> {
 /// Relaunch only after the renderer has observed authenticated Serve shutdown and discovery cleanup.
 /// The marker survives the process boundary, is consumed once, and grants no general process control.
 #[tauri::command]
-fn restart_after_update(app: tauri::AppHandle) -> Result<(), String> {
+fn restart_after_update<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    dev_updater::ensure_public_updates(&app.config().identifier)?;
     // Tauri's process replacement is not guaranteed to deliver RunEvent::Exit before the new binary
     // starts. Retire this known-clean run synchronously so the next launch cannot report an update as
     // an unclean exit. If retirement fails, roll back the update marker and do not restart.
@@ -3923,7 +3936,7 @@ pub fn run() {
         eprintln!("{error}; candidate was not started"); return;
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .register_asynchronous_uri_scheme_protocol("hara-media", |context, request, responder| {
             if context.webview_label() != "main" { responder.respond(tauri::http::Response::builder().status(404).body(Vec::<u8>::new()).unwrap()); return; }
             tauri::async_runtime::spawn(async move { responder.respond(workspace_media::response(request).await); });
@@ -3932,9 +3945,9 @@ pub fn run() {
         .manage(RendererBootState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(
+        .plugin(tauri_plugin_notification::init());
+    let builder = dev_updater::register_public_updater(builder, &context.config().identifier);
+    builder.plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_filter(should_track_window_state)
                 // A cold launch always owns a visible main entry window. Persisting visibility can

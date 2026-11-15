@@ -1831,5 +1831,7 @@
   "ws.workScope.write.unavailable": "当前连接无法更改工作范围，上方仍显示已保存的内容。",
   "ws.workScope.write.unknown": "结果尚未确认。请保留这次操作，并继续查看原结果。",
   "ws.workScope.write.yes": "是",
-  "ws.settings.deviceCopy.withMacPermission": "{note}首次保存时，系统可能请求钥匙串授权。"
+  "ws.settings.deviceCopy.withMacPermission": "{note}首次保存时，系统可能请求钥匙串授权。",
+  "ws.updates.development": "Hara Dev 开发版",
+  "ws.updates.developmentNote": "开发版通过开发命令更新。退出 Hara Dev，再在新终端运行："
 }

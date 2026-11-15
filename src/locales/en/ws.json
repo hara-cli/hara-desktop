@@ -1831,5 +1831,7 @@
   "ws.workScope.write.unavailable": "Changes are unavailable on this connection. The saved scope is still shown above.",
   "ws.workScope.write.unknown": "The result is not yet known. Keep this operation and check its original result.",
   "ws.workScope.write.yes": "Yes",
-  "ws.settings.deviceCopy.withMacPermission": "{note} Your system may ask for Keychain permission the first time you save."
+  "ws.settings.deviceCopy.withMacPermission": "{note} Your system may ask for Keychain permission the first time you save.",
+  "ws.updates.development": "Hara Dev development build",
+  "ws.updates.developmentNote": "Update this development build with the development command. Quit Hara Dev, then run this command in a new terminal:"
 }
