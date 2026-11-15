@@ -107,7 +107,15 @@ fn invoke(
             cmd: command.into(),
             callback: tauri::ipc::CallbackFn(0),
             error: tauri::ipc::CallbackFn(1),
-            url: "http://tauri.localhost".parse().unwrap(),
+            // Use each platform's actual bundled origin, rather than a remote URL that
+            // could make an ACL denial look like the Dev updater guard worked.
+            url: if cfg!(any(windows, target_os = "android")) {
+                "http://tauri.localhost"
+            } else {
+                "tauri://localhost"
+            }
+            .parse()
+            .unwrap(),
             body: tauri::ipc::InvokeBody::default(),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.into(),
