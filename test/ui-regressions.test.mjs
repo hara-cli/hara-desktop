@@ -877,7 +877,7 @@ test("updater restart waits for real shutdown and one-shot relaunch starts the b
   assert.match(app, /expectedPid !== null && d\.pid !== expectedPid/, "the final connection repeats the pid handshake");
   assert.match(app, /await connect\(pid\)/);
   assert.match(nativeHost, /fn take_update_restart_marker\(app: tauri::AppHandle\)/);
-  assert.match(nativeHost, /fn restart_after_update\(app: tauri::AppHandle\)/);
+  assert.match(nativeHost, /fn restart_after_update<R: tauri::Runtime>\(app: tauri::AppHandle<R>\)/);
   assert.match(nativeHost, /arm_update_restart_marker_at/);
   assert.match(nativeHost, /app\.restart\(\)/);
   assert.match(nativeHost, /take_update_restart_marker,/);
