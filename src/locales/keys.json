@@ -2164,6 +2164,8 @@
     "ws.tasks.record",
     "ws.updates.candidate",
     "ws.updates.candidateNote",
+    "ws.updates.development",
+    "ws.updates.developmentNote",
     "ws.updates.engine",
     "ws.updates.channel",
     "ws.updates.arch",
