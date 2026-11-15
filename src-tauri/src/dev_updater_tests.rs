@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use tauri::test::{get_ipc_response, mock_builder, MockRuntime, INVOKE_KEY};
+use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, MockRuntime, INVOKE_KEY};
 
 struct Feed {
     endpoint: String,
@@ -75,8 +75,22 @@ impl Drop for Feed {
     }
 }
 fn app(identifier: &str, endpoint: &str) -> tauri::App<MockRuntime> {
-    // Use the shipped command ACLs, with a mock runtime and no OS windows.
-    let mut context = desktop_context();
+    // Keep the production generate_context expansion exclusively in run(). A second macro
+    // expansion embeds a duplicate macOS Info.plist symbol, even with MockRuntime.
+    let mut context = mock_context(noop_assets());
+    *context.config_mut() = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    // Resolve the same build-script inputs as Tauri's context code generator. An empty
+    // mock authority could otherwise turn a permission denial into a false Dev green.
+    let acl = serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/acl-manifests.json")))
+        .expect("compiled plugin ACL manifests");
+    let capabilities = serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/capabilities.json")))
+        .expect("compiled application capabilities");
+    let capabilities = tauri::utils::acl::get_capabilities(context.config(), capabilities, None)
+        .expect("same shipped capability selection");
+    let resolved = tauri::utils::acl::resolved::Resolved::resolve(
+        &acl, capabilities, tauri::utils::platform::Target::current(),
+    ).expect("same shipped ACL resolution");
+    *context.runtime_authority_mut() = tauri::runtime_authority!(acl, resolved);
     context.config_mut().app.windows.clear();
     context.config_mut().identifier = identifier.into();
     // This override belongs only to the mock application, never to shipped configuration.
@@ -181,6 +195,13 @@ fn dev_updater_ipc_rejects_every_entry_and_keeps_formal_metadata_check_live() {
         );
         assert_eq!(feed.requests.load(AtomicOrdering::SeqCst), 2);
         assert_eq!(feed.downloads.load(AtomicOrdering::SeqCst), 0);
+        // Prove these are shipped main-window permissions, not an allow-all mock ACL.
+        let outside = tauri::WebviewWindowBuilder::new(&formal, "outside-capability", Default::default())
+            .build()
+            .unwrap();
+        invoke(&outside, "plugin:updater|check")
+            .expect_err("the shipped capability must reject updater access outside main");
+        assert_eq!(feed.requests.load(AtomicOrdering::SeqCst), 2);
     }
     std::env::remove_var("HARA_DESKTOP_UPDATER_TEST_ENDPOINT");
 }
