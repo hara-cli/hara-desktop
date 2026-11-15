@@ -3859,9 +3859,13 @@ fn release_updater_endpoints(config: &tauri::utils::config::Config) -> Result<Ve
         .collect()
 }
 
+fn desktop_context<R: tauri::Runtime>() -> tauri::Context<R> {
+    tauri::generate_context!()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut context = tauri::generate_context!();
+    let mut context = desktop_context();
     // Development-only signed fixture: production ignores these variables and embeds the one
     // existing public key. No private signing material is ever accepted by the native app.
     #[cfg(debug_assertions)]

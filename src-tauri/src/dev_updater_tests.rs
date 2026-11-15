@@ -76,7 +76,7 @@ impl Drop for Feed {
 }
 fn app(identifier: &str, endpoint: &str) -> tauri::App<MockRuntime> {
     // Use the shipped command ACLs, with a mock runtime and no OS windows.
-    let mut context = tauri::generate_context!();
+    let mut context = desktop_context();
     context.config_mut().app.windows.clear();
     context.config_mut().identifier = identifier.into();
     // This override belongs only to the mock application, never to shipped configuration.
