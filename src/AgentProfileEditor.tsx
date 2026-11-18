@@ -1,24 +1,38 @@
 import { makeT } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import { AvatarImageError, prepareAgentAvatar } from "./agent-avatar-image";
-import { WorkspaceAgentAvatar } from "./WorkspaceAgentAvatar";
+import { WorkspaceAgentAppearance, WorkspaceAgentAvatar } from "./WorkspaceAgentAvatar";
 import { ShellDialog } from "./WorkspaceShell";
 import { redesignText } from "./desktop-redesign-copy";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import type { AgentInfo, AgentPublicIdentity, AgentRuntimeId, AgentRuntimeOption, ModelCatalogEntry } from "./client";
 import AgentRuntimePicker from "./AgentRuntimePicker";
 import { AgentPortrait } from "./AgentPortrait";
-import { MAX_AGENT_AVATAR_BYTES } from "./agent-visual";
+import { AGENT_ACCENT_PALETTE, AGENT_AVATAR_STYLES, MAX_AGENT_AVATAR_BYTES, agentAccent, agentAvatarStyle,
+  type AgentAccent, type AgentAvatarStyle } from "./agent-visual";
+import { WorkspaceViewError } from "./workspace-dev-errors.ts";
 import { IconClose } from "./icons";
 import "./AgentProfileEditor.css";
 import type { WorkspaceDevAgent, WorkspaceAgentProfilePatch } from "./workspace-dev-state";
 import { formatMessage, type Locale as ShellLocale } from "./i18n-runtime.ts";
+
+const accentNames = {
+  "#ff695f": "coral", "#4f9c8f": "jade", "#d99a32": "amber", "#6e88c8": "periwinkle",
+  "#c68a72": "terracotta", "#d1667b": "rose", "#438db3": "blue", "#7f9a45": "olive",
+} as const satisfies Record<AgentAccent, string>;
 
 export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
   agent: WorkspaceDevAgent; locale: ShellLocale; onClose(): void;
   onSave(profile: WorkspaceAgentProfilePatch): Promise<void>;
 }) {
   const canEditAvatar = agent.kind !== "main";
+  const appearanceSupported = useContext(WorkspaceAgentAppearance) && agent.kind === "colleague" && agent.state === "active";
+  const optionGroup = useId();
+  const [accent, setAccent] = useState<AgentAccent>();
+  const [avatarStyle, setAvatarStyle] = useState<AgentAvatarStyle>();
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [saveUnconfirmed, setSaveUnconfirmed] = useState(false);
+  const inFlight = useRef(false);
   const [displayName, setDisplayName] = useState(agent.identity.displayName);
   const [title, setTitle] = useState(agent.identity.title ?? "");
   const [emoji, setEmoji] = useState(agent.identity.emoji ?? "");
@@ -28,15 +42,28 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
   const imageVersion = useRef(0), imageRequest = useRef<AbortController | null>(null), form = useRef<HTMLDivElement>(null);
   const authority = useRef({ id: agent.agentId, revision: agent.configRevision, epoch: agent.agentEpoch });
   const original = useRef({ displayName: agent.identity.displayName, title: agent.identity.title ?? "", emoji: agent.identity.emoji ?? "", avatar: agent.identity.avatar ?? "" });
-  const changed = displayName.trim() !== original.current.displayName || title.trim() !== original.current.title || emoji.trim() !== original.current.emoji || (canEditAvatar && avatar !== original.current.avatar);
   const stale = authority.current.id !== agent.agentId || authority.current.revision !== agent.configRevision || authority.current.epoch !== agent.agentEpoch;
+  const initialAccent = appearanceSupported ? agentAccent(agent.initialAccent) : undefined;
+  const currentAccent = agentAccent(agent.identity.accent);
+  const currentStyle = agentAvatarStyle(agent.identity.avatarStyle) ?? "circle";
+  const accentChanged = accent !== undefined && accent !== currentAccent;
+  const styleChanged = avatarStyle !== undefined && avatarStyle !== currentStyle;
+  const appearanceChanged = accentChanged || styleChanged;
+  const changed = displayName.trim() !== original.current.displayName || title.trim() !== original.current.title
+    || emoji.trim() !== original.current.emoji || (canEditAvatar && avatar !== original.current.avatar) || appearanceChanged;
+  const appearanceBlocked = appearanceChanged && !appearanceSupported;
+  const controlsDisabled = busy || stale || saveUnconfirmed || confirmDiscard;
   useEffect(() => () => { imageVersion.current++; imageRequest.current?.abort(); }, []);
   const t = makeT(locale);
   const r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key);
-  const close = () => { if (!busy) onClose(); };
+  const close = () => {
+    if (inFlight.current) return;
+    if (changed && (appearanceSupported || appearanceChanged)) setConfirmDiscard(true); else onClose();
+  };
   const save = async () => {
-    if (busy || imageBusy || stale || !changed || !displayName.trim()) return;
+    if (inFlight.current || controlsDisabled || appearanceBlocked || imageBusy || !changed || !displayName.trim()) return;
     form.current?.closest<HTMLElement>("[role=dialog]")?.focus();
+    inFlight.current = true;
     setBusy(true); setError("");
     try {
       const patch: WorkspaceAgentProfilePatch = {};
@@ -44,37 +71,80 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
       if (title.trim() !== original.current.title) patch.title = title.trim();
       if (emoji.trim() !== original.current.emoji) patch.emoji = emoji.trim();
       if (canEditAvatar && avatar !== original.current.avatar) patch.avatar = avatar;
+      if (appearanceSupported && accentChanged) patch.accent = accent;
+      if (appearanceSupported && styleChanged) patch.avatarStyle = avatarStyle;
       await onSave(patch); onClose();
+    } catch (cause) {
+      if (cause instanceof WorkspaceViewError && cause.messageKey === "ws.profileSheet.appearance.saveUnconfirmed") setSaveUnconfirmed(true);
+      setError(workspaceMessageText(t, cause instanceof Error ? cause.message : String(cause)));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
-    catch (cause) { setError(workspaceMessageText(t, cause instanceof Error ? cause.message : String(cause))); }
-    finally { setBusy(false); }
   };
   const pickImage = async (file: File) => {
-    if (!canEditAvatar) return;
+    if (!canEditAvatar || controlsDisabled) return;
     const version = ++imageVersion.current; imageRequest.current?.abort(); const request = new AbortController(); imageRequest.current = request; setImageBusy(true); setError("");
     try { const prepared = await prepareAgentAvatar(file, request.signal); if (imageVersion.current === version) setAvatar(prepared); }
     catch (cause) { if (imageVersion.current === version) setError(cause instanceof AvatarImageError && cause.code === "tooLarge" ? t("ws.profileSheet.avatarTooLarge")
       : cause instanceof AvatarImageError && cause.code === "format" ? r("avatarImageFormat") : cause instanceof AvatarImageError && cause.code === "dimensions" ? r("avatarImageDimensions") : t("ws.profileSheet.avatarReadFailed")); }
     finally { if (imageVersion.current === version) setImageBusy(false); }
   };
-  const previewAgent = { ...agent, identity: { ...agent.identity, displayName: displayName.trim() || agent.identity.displayName, avatar } };
+  const previewAgent = stale ? agent : { ...agent, identity: { ...agent.identity,
+    displayName: displayName.trim() || agent.identity.displayName, avatar,
+    ...(appearanceSupported && accentChanged ? { accent } : {}),
+    ...(appearanceSupported && styleChanged ? { avatarStyle } : {}),
+  } };
   return <ShellDialog label={t("ws.profileSheet.title")} className="agent-profile-editor workspace-profile-sheet" onClose={close} dismissOnBackdrop workspaceOverlay>
     <header><h2>{t("ws.profileSheet.title")}</h2><button type="button" className="hs-icon" aria-label={t("ws.close")} disabled={busy} onClick={close}><IconClose /></button></header>
     <div className="agent-profile-form" ref={form}>
       <div className="workspace-profile-avatar-preview"><WorkspaceAgentAvatar agent={previewAgent} large /><p>{r(canEditAvatar ? "avatarSquareHint" : "mainAvatarFixed")}</p></div>
-      <label>{t("ws.profileSheet.displayName")}<input value={displayName} readOnly={busy} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
-      <label>{t("ws.profileSheet.role")}<input value={title} readOnly={busy} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
-      <label>{t("ws.profileSheet.emoji")}<input value={emoji} readOnly={busy} maxLength={24} onChange={event => setEmoji(event.target.value)} /></label>
+      {appearanceSupported ? <section aria-label={t("ws.profileSheet.appearance.title")} className="workspace-profile-appearance">
+        <fieldset disabled={controlsDisabled}>
+          <legend>{t("ws.profileSheet.appearance.colour")}</legend>
+          <div className="workspace-profile-options">{AGENT_ACCENT_PALETTE.map(option => (
+            <label key={option}><input type="radio" name={`${optionGroup}-colour`} checked={(accent ?? currentAccent) === option} onChange={() => setAccent(option)} />
+              <span className="workspace-profile-swatch" style={{ background: option }} aria-hidden="true" />
+              <span>{t(`ws.profileSheet.appearance.palette.${accentNames[option]}`)}</span>
+            </label>
+          ))}</div>
+        </fieldset>
+        {initialAccent ? <button type="button" className="hs-btn sec" disabled={controlsDisabled || (accent ?? currentAccent) === initialAccent}
+          onClick={() => setAccent(initialAccent)}>{t("ws.profileSheet.appearance.restore")}</button>
+          : <p className="workspace-profile-appearance-note">{t("ws.profileSheet.appearance.noInitialColour")}</p>}
+        <fieldset disabled={controlsDisabled}>
+          <legend>{t("ws.profileSheet.appearance.shape")}</legend>
+          <div className="workspace-profile-options">{AGENT_AVATAR_STYLES.map(option => (
+            <label key={option}><input type="radio" name={`${optionGroup}-shape`} checked={(avatarStyle ?? currentStyle) === option} onChange={() => setAvatarStyle(option)} />
+              <span>{t(`ws.profileSheet.appearance.styles.${option}`)}</span>
+            </label>
+          ))}</div>
+        </fieldset>
+      </section> : null}
+      <label>{t("ws.profileSheet.displayName")}<input value={displayName} readOnly={controlsDisabled} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
+      <label>{t("ws.profileSheet.role")}<input value={title} readOnly={controlsDisabled} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
+      <label>{t("ws.profileSheet.emoji")}<input value={emoji} readOnly={controlsDisabled} maxLength={24} onChange={event => setEmoji(event.target.value)} /></label>
       {canEditAvatar ? <>
-        <label>{t("ws.profileSheet.imageAvatar")}<input type="file" accept="image/png,image/jpeg" disabled={busy} onChange={event => {
+        <label>{t("ws.profileSheet.imageAvatar")}<input type="file" accept="image/png,image/jpeg" disabled={controlsDisabled} onChange={event => {
           const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void pickImage(file);
         }} /></label>
-        {avatar ? <button type="button" className="hs-btn sec" disabled={busy} onClick={() => { imageVersion.current++; imageRequest.current?.abort(); setImageBusy(false); setAvatar(""); setError(""); }}>{t("ws.profileSheet.avatarRemove")}</button> : null}
+        {avatar ? <button type="button" className="hs-btn sec" disabled={controlsDisabled} onClick={() => { imageVersion.current++; imageRequest.current?.abort(); setImageBusy(false); setAvatar(""); setError(""); }}>{t("ws.profileSheet.avatarRemove")}</button> : null}
       </> : null}
       {imageBusy ? <p role="status">{r("avatarImagePreparing")}</p> : null}
       {stale ? <p role="status">{r("profileChanged")}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
-      <button type="button" className="hs-btn pri" disabled={busy || imageBusy || stale || !changed || !displayName.trim()} onClick={() => void save()}>{busy ? t("ws.profileSheet.saving") : t("ws.profileSheet.save")}</button>
+      {appearanceBlocked ? <p role="status">{t("ws.profileSheet.appearance.unavailable")}</p> : null}
+      {confirmDiscard ? <div className="workspace-profile-discard">
+        <p role="status">{t("ws.profileSheet.discardQuestion")}</p>
+        <div className="wsd-card-actions">
+          <button type="button" className="hs-btn sec" autoFocus onClick={() => {
+            setConfirmDiscard(false);
+            form.current?.closest<HTMLElement>("[role=dialog]")?.focus();
+          }}>{t("ws.settings.discard.keep")}</button>
+          <button type="button" className="hs-btn sec" onClick={onClose}>{t("ws.settings.discard.leave")}</button>
+        </div>
+      </div> : null}
+      <button type="button" className="hs-btn pri" disabled={controlsDisabled || appearanceBlocked || imageBusy || !changed || !displayName.trim()} onClick={() => void save()}>{busy ? t("ws.profileSheet.saving") : t("ws.profileSheet.save")}</button>
     </div>
   </ShellDialog>;
 }

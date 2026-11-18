@@ -19,7 +19,7 @@ import { CREATE_BATCH_CAPABILITY, CREATE_BATCH_LIMIT, createBatchView, type Crea
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 import type { AgentRuntimeId, AgentRuntimeOption } from "./client";
-import type { AgentAvatarStyle } from "./agent-visual";
+import { agentAccent, agentAvatarStyle, type AgentAccent, type AgentAvatarStyle } from "./agent-visual.ts";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean; setAssistantPreviewListener?(listener: (value: WorkspaceAssistantPreview | null) => void): void; timingNow?(): MessageTimingInput | null; runtimePlatform?(): WorkspaceRuntimePlatform }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
 export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
@@ -35,7 +35,7 @@ export interface WorkspaceDevAgent { titleSource?: "default"; titleKey?: "core.n
   readonly initialAccent?: string;
   identity: { displayName: string; title?: string; shortTitle?: string; emoji?: string; avatar?: string; accent?: string; character?: string; avatarStyle?: AgentAvatarStyle }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 /** Renderer edits only fields admitted by the current public persona RPC. Unchanged fields stay absent. */
-export interface WorkspaceAgentProfilePatch { displayName?: string; title?: string; emoji?: string; avatar?: string }
+export interface WorkspaceAgentProfilePatch { displayName?: string; title?: string; emoji?: string; avatar?: string; accent?: AgentAccent; avatarStyle?: AgentAvatarStyle }
 export interface ColleagueCreateDraft { username: string; displayName: string; title: string; instructions: string;
   project: string; runtimeId: AgentRuntimeId; permissionTier: RuntimePermissionTier }
 export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
@@ -790,17 +790,35 @@ export class WorkspaceDevModel {
       throw new WorkspaceViewError("ws.notice.scopeChanged");
     return result;
   }
-  async updateAgentPersona(agent: WorkspaceDevAgent, patch: WorkspaceAgentProfilePatch): Promise<void> {
+  async updateAgentPersona(agent: WorkspaceDevAgent, patch: WorkspaceAgentProfilePatch, expectedScope?: string): Promise<void> {
     if (!agent.configRevision || !agent.agentEpoch || !patch || typeof patch !== "object" || Array.isArray(patch)
-      || Object.entries(patch).some(([key, value]) => !["displayName", "title", "emoji", "avatar"].includes(key) || value !== undefined && typeof value !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
-    const values = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+      || Object.entries(patch).some(([key, value]) => !["displayName", "title", "emoji", "avatar", "accent", "avatarStyle"].includes(key) || value !== undefined && typeof value !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
+    const values = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as WorkspaceAgentProfilePatch;
     if (!Object.keys(values).length) return;
-    const current = this.view.workspace?.agents.find(row => row.agentId === agent.agentId);
+    const workspace = this.view.workspace, epoch = this.epoch;
+    const current = workspace?.agents.find(row => row.agentId === agent.agentId);
     if (!current || current.configRevision !== agent.configRevision || current.agentEpoch !== agent.agentEpoch) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    const appearance = values.accent !== undefined || values.avatarStyle !== undefined;
+    if (appearance) {
+      if (!this.supportsAgentAppearance() || current.kind !== "colleague" || current.state !== "active"
+        || values.accent !== undefined && agentAccent(values.accent) !== values.accent
+        || values.avatarStyle !== undefined && !agentAvatarStyle(values.avatarStyle)) throw new WorkspaceViewError("ws.notice.invalidView");
+      if (!expectedScope || expectedScope !== this.mediaScope || workspace?.selectedAgentId !== agent.agentId) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    }
     // Fill the RPC-required name from the raw snapshot, not a localized presentation label.
     const profile = { displayName: current.identity.displayName, ...values };
-    await this.workspaceRequest("workspace.agents.updatePersona", { agentId: agent.agentId, input: { profile }, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
+    try {
+      await this.workspaceRequest("workspace.agents.updatePersona", { agentId: agent.agentId, input: { profile }, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
+    } catch (error) {
+      if (appearance && (error instanceof WorkspaceRpcWaitError || error instanceof WorkspaceViewError
+        && (error.messageKey === "ws.rpc.disconnected" || error.messageKey === "ws.rpc.transportLost"))) {
+        if (epoch === this.epoch && expectedScope === this.mediaScope && this.supportsAgentAppearance()) await this.refresh();
+        throw new WorkspaceViewError("ws.profileSheet.appearance.saveUnconfirmed");
+      }
+      throw error;
+    }
     await this.refresh();
+    if (appearance && (epoch !== this.epoch || expectedScope !== this.mediaScope)) throw new WorkspaceViewError("ws.notice.scopeChanged");
   }
   async renameWorkspace(label: string, workspaceId: string): Promise<void> {
     if (this.view.workspaceId !== workspaceId || !this.view.directory) throw new WorkspaceViewError("ws.notice.scopeChanged");
