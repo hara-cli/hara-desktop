@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
-import { WorkspaceRpcWaitError } from "../src/workspace-dev-errors.ts";
+import { WorkspaceRpcWaitError, WorkspaceViewError } from "../src/workspace-dev-errors.ts";
 import { agentAccent } from "../src/agent-visual.ts";
 
 const method = "workspace.agents.updatePersona";
@@ -82,11 +82,15 @@ test("unsupported, stale or forged appearance changes send zero writes", async (
 });
 
 test("a lost reply rereads the snapshot without resubmitting a persona change", async () => {
-  const f = fixture({ onWrite: () => { throw new WorkspaceRpcWaitError(method); } });
-  await f.model.selectWorkspace("A");
-  await assert.rejects(f.model.updateAgentPersona(colleague, { accent: "#c68a72" }, f.model.mediaScope), {
-    messageKey: "ws.profileSheet.appearance.saveUnconfirmed",
-  });
-  assert.equal(f.writes().length, 1);
-  assert.deepEqual(f.calls.at(-1), { name: "workspace.snapshot", params: { workspaceId: "A", agentId: "colleague" } });
+  const interruptions = [new WorkspaceRpcWaitError(method), new WorkspaceViewError("ws.rpc.disconnected"),
+    new WorkspaceViewError("ws.rpc.transportLost")];
+  for (const interruption of interruptions) {
+    const f = fixture({ onWrite: () => { throw interruption; } });
+    await f.model.selectWorkspace("A");
+    await assert.rejects(f.model.updateAgentPersona(colleague, { accent: "#c68a72" }, f.model.mediaScope), {
+      messageKey: "ws.profileSheet.appearance.saveUnconfirmed",
+    });
+    assert.equal(f.writes().length, 1);
+    assert.deepEqual(f.calls.at(-1), { name: "workspace.snapshot", params: { workspaceId: "A", agentId: "colleague" } });
+  }
 });

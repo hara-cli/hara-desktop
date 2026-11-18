@@ -6,7 +6,8 @@ import { createRequire } from "node:module";
 import { build } from "esbuild";
 import ts from "typescript";
 import { makeT } from "../src/i18n.ts";
-import { WORKSPACE_KEYS, WORKSPACE_EXTRA_KEYS } from "../src/workspace-i18n.ts";
+import { WORKSPACE_EXTRA_KEYS } from "../src/workspace-i18n.ts";
+import { WORKSPACE_KEY_SET } from "../src/i18n-catalog.ts";
 import { WORKSPACE_SETTINGS_KEYS } from "../src/workspace-settings-i18n.ts";
 import { workspaceMessageText, settingsStateText, runtimeOperationText } from "../src/workspace-settings-copy.ts";
 import { updateDefaults } from "../src/workspace-updater-state.ts";
@@ -140,7 +141,6 @@ test("settings Chinese dictionaries do not mix the common Simplified and Traditi
 });
 
 test("settings source routes visible copy and async notices through the three-language dictionaries", () => {
-  const known = new Set([...WORKSPACE_KEYS, ...WORKSPACE_EXTRA_KEYS].map(row => row[0]));
   for (const file of [...files, "workspace-updater-state.ts", "workspace-dev-state.ts", "workspace-dev-errors.ts"]) {
     const source = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8"), ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX), violations = [];
     function visit(node) {
@@ -151,7 +151,7 @@ test("settings source routes visible copy and async notices through the three-la
         if (!(file === "WorkspaceSettings.tsx" && ((value === "zh-Hans" && node.text === "简体中文") || (value === "zh-Hant" && node.text === "繁體中文")))) violations.push(node.text);
       }
       if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateSpan(node)) && /\p{Script=Han}/u.test(node.getText(ast))) violations.push(node.getText(ast));
-      if (ts.isStringLiteral(node) && node.text.startsWith("ws.")) assert.ok(known.has(node.text), `${file}: ${node.text}`);
+      if (ts.isStringLiteral(node) && node.text.startsWith("ws.")) assert.ok(WORKSPACE_KEY_SET.has(node.text), `${file}: ${node.text}`);
       ts.forEachChild(node, visit);
     }
     visit(ast); assert.deepEqual(violations, [], file);
