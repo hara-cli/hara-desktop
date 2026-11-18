@@ -3,23 +3,56 @@ import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 import {fileURLToPath} from "node:url";
 import {build} from "esbuild";
-import {AGENT_ACCENT_PALETTE,agentAvatarAccent,agentConversationAccent,agentAvatarInitials} from "../src/agent-visual.ts";
+import {AGENT_ACCENT_PALETTE,AGENT_AVATAR_STYLES,agentAccent,agentAvatarAccent,agentConversationAccent,agentAvatarInitials,agentVisualTokens,stableAgentHash} from "../src/agent-visual.ts";
 const luminance=hex=>{const v=hex.slice(1).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return v[0]*.2126+v[1]*.7152+v[2]*.0722};
 const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
-test("all eight conversation colours have accessible white text and avatar ink",()=>{
- assert.equal(new Set(AGENT_ACCENT_PALETTE).size,8);
- for(const accent of AGENT_ACCENT_PALETTE){const value=agentConversationAccent("synthetic",{accent});assert.equal(value.accent,accent);assert.ok(contrast(value.deep,"#ffffff")>=4.5,accent);assert.ok(contrast(accent,"#1a1325")>=4.5,accent);}
- const main=agentConversationAccent("main",{accent:"#ff695f"},true);assert.deepEqual(main,{accent:"#7C3AED",deep:"#7C3AED"});assert.ok(contrast(main.deep,"#fffFFF")>=4.5);
+const legacyPalette = AGENT_ACCENT_PALETTE.map(accent => accent === "#c68a72" ? "#a67bc2" : accent);
+
+test("the current palette uses the complete terracotta row and keeps contrast with avatar ink", () => {
+  assert.deepEqual(AGENT_ACCENT_PALETTE, ["#ff695f", "#4f9c8f", "#d99a32", "#6e88c8", "#c68a72", "#d1667b", "#438db3", "#7f9a45"]);
+  for (const accent of AGENT_ACCENT_PALETTE) assert.ok(contrast(accent, "#1a1325") >= 4.5, accent);
+  const slotFive = Array.from({ length: 24 }, (_, index) => `synthetic-${index}`)
+    .find(id => stableAgentHash(`${id}\0`) % AGENT_ACCENT_PALETTE.length === 4);
+  assert.ok(slotFive);
+  const { variant, archetype, ...row } = agentVisualTokens(slotFive, undefined, true);
+  assert.deepEqual(row, { accent: "#c68a72", accentAlt: "#e6b092", skin: "#edc5ad", hair: "#5a3645", hairAlt: "#9b6176", outfit: "#76513f", paper: "#fff0e7" });
+  assert.equal(agentVisualTokens(slotFive).accent, "#a67bc2");
+  assert.equal(agentAccent("#C68A72"), "#c68a72");
+  for (const invalid of [undefined, null, "#a67bc2", "#7c3aed", "#0a0a0a", "#c68a72;display:none"]) assert.equal(agentAccent(invalid), undefined);
 });
-test("invalid imported colours cannot become CSS and character-preserving fallback stays shared",()=>{
- for(const accent of [undefined,"#010101","#ff0000","red","url(https://example.invalid)","#000000;display:none"]){
-  for(let index=0;index<50;index++){const id=`synthetic-${index}`,identity={accent,character:"specialist"};const value=agentConversationAccent(id,identity);assert.ok(AGENT_ACCENT_PALETTE.includes(value.accent));assert.equal(value.accent,agentAvatarAccent(id,identity));assert.match(value.deep,/^#[a-f0-9]{6}$/);}
- }
- assert.equal(agentConversationAccent("case",{accent:"#FF695F"}).accent,"#ff695f");
- assert.equal(agentAvatarInitials("林安"),"林");assert.equal(agentAvatarInitials("Alex Smith"),"AS");
+
+test("old Core keeps all eight existing conversation colours and Hara keeps its brand colour", () => {
+  for (const accent of legacyPalette) {
+    const value = agentConversationAccent("synthetic", { accent });
+    assert.equal(value.accent, accent);
+    assert.ok(contrast(value.deep, "#ffffff") >= 4.5, accent);
+  }
+  const main = agentConversationAccent("main", { accent: "#ff695f" }, true);
+  assert.deepEqual(main, { accent: "#7C3AED", deep: "#7C3AED" });
+  assert.ok(contrast(main.deep, "#ffffff") >= 4.5);
+});
+
+test("invalid imported colours cannot become CSS and character-preserving fallback stays shared", () => {
+  for (const accent of [undefined, "#010101", "#ff0000", "red", "url(https://example.invalid)", "#000000;display:none"]) {
+    for (let index = 0; index < 50; index++) {
+      const id = `synthetic-${index}`, identity = { accent, character: "specialist" };
+      const value = agentConversationAccent(id, identity);
+      assert.ok(legacyPalette.includes(value.accent));
+      assert.ok(AGENT_ACCENT_PALETTE.includes(agentAvatarAccent(id, identity, true)));
+      assert.equal(value.accent, agentAvatarAccent(id, identity));
+      assert.match(value.deep, /^#[a-f0-9]{6}$/);
+    }
+  }
+  assert.equal(agentConversationAccent("case", { accent: "#FF695F" }).accent, "#ff695f");
+  assert.equal(agentAvatarInitials("林安"), "林");
+  assert.equal(agentAvatarInitials("Alex Smith"), "AS");
 });
 const require=createRequire(import.meta.url);
-const bundled=await build({stdin:{contents:`import {createElement as h} from 'react';import {renderToStaticMarkup as render} from 'react-dom/server';import {Avatar} from './src/WorkspaceShell.tsx';import {SidebarAvatar} from './src/SidebarAvatar.tsx';export const avatar=(sidebar,agent)=>render(h(sidebar?SidebarAvatar:Avatar,{agent}));`,resolveDir:fileURLToPath(new URL('../',import.meta.url)),loader:'tsx'},bundle:true,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom'],loader:{'.css':'empty','.svg':'empty'},write:false,logLevel:'silent'});
+const bundled=await build({stdin:{contents:`import {createElement as h} from 'react';import {renderToStaticMarkup as render} from 'react-dom/server';import {Avatar} from './src/WorkspaceShell.tsx';import {SidebarAvatar} from './src/SidebarAvatar.tsx';import {WorkspaceAgentAppearance,WorkspaceAgentAvatar} from './src/WorkspaceAgentAvatar.tsx';
+const appearance = (supported, child) => render(h(WorkspaceAgentAppearance.Provider, {value: supported}, child));
+export const avatar=(sidebar,agent,supported=false)=>appearance(supported,h(sidebar?SidebarAvatar:Avatar,{agent}));
+export const profile=(agent,supported=true)=>appearance(supported,h(WorkspaceAgentAvatar,{agent,large:true}));
+export const group=(members,supported=true)=>appearance(supported,h(SidebarAvatar,{members}));`,resolveDir:fileURLToPath(new URL('../',import.meta.url)),loader:'tsx'},bundle:true,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom'],loader:{'.css':'empty','.svg':'empty'},write:false,logLevel:'silent'});
 const output={exports:{}};new Function('require','module','exports',bundled.outputFiles[0].text)(require,output,output.exports);
 const agent=(index,extra={})=>({agentId:`synthetic-${index}`,kind:'colleague',state:'active',identity:{displayName:'Alex Smith',character:'specialist',...extra},runtime:{id:'pi',label:'Pi',available:true}});
 test("sidebar and conversation avatars share colours, monograms and accepted image sources",()=>{
@@ -27,4 +60,33 @@ test("sidebar and conversation avatars share colours, monograms and accepted ima
  const stored=agent(0,{avatar:'/avatars/synthetic-avatar.webp'});assert.equal(output.exports.avatar(true,stored),output.exports.avatar(false,stored));assert.match(output.exports.avatar(false,stored),/<img/);
  for(const avatar of ['https://example.invalid/private.png','file:///private/fixture.png','data:image/svg+xml;base64,AAAA'])assert.doesNotMatch(output.exports.avatar(false,agent(0,{avatar})),/<img/);
  const main={...agent(0),kind:'main',identity:{displayName:'Hara',avatar:'https://example.invalid/private.png'}};assert.match(output.exports.avatar(false,main),/is-main/);assert.doesNotMatch(output.exports.avatar(false,main),/example.invalid/);
+});
+
+test("negotiated colour and shape render consistently in the sidebar, conversation and profile", () => {
+  for (const accent of AGENT_ACCENT_PALETTE) {
+    for (const avatarStyle of AGENT_AVATAR_STYLES) {
+      const item = agent(0, { accent, avatarStyle });
+      const sidebar = output.exports.avatar(true, item, true);
+      assert.equal(sidebar, output.exports.avatar(false, item, true));
+      for (const html of [sidebar, output.exports.profile(item)]) {
+        assert.ok(html.includes(`background:${accent}`));
+        assert.ok(html.includes(`data-avatar-style="${avatarStyle}"`));
+        assert.match(html, />AS<\/span>/);
+      }
+    }
+  }
+  const portrait = agent(0, { accent: "#c68a72", avatarStyle: "portrait", avatar: "/avatars/synthetic-avatar.webp" });
+  assert.match(output.exports.profile(portrait), /<img/);
+  const legacy = agent(0, { accent: "#a67bc2", avatarStyle: "hex" });
+  const old = output.exports.avatar(false, legacy);
+  assert.match(old, /background:#a67bc2/);
+  assert.doesNotMatch(old, /data-avatar-style/);
+  assert.doesNotMatch(output.exports.avatar(false, legacy, true), /background:#a67bc2/);
+  assert.match(output.exports.avatar(false, agent(0, { avatarStyle: "unrecognized" }), true), /data-avatar-style="circle"/);
+  assert.match(output.exports.group([{ id: "synthetic-0", accent: "#c68a72" }]), /background:#c68a72/);
+  const main = { ...portrait, kind: "main" };
+  for (const html of [output.exports.avatar(false, main, true), output.exports.profile(main)]) {
+    assert.match(html, /is-main/);
+    assert.doesNotMatch(html, /c68a72|data-avatar-style|synthetic-avatar\.webp/);
+  }
 });

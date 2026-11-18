@@ -19,6 +19,7 @@ import { CREATE_BATCH_CAPABILITY, CREATE_BATCH_LIMIT, createBatchView, type Crea
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 import type { AgentRuntimeId, AgentRuntimeOption } from "./client";
+import type { AgentAvatarStyle } from "./agent-visual";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean; setAssistantPreviewListener?(listener: (value: WorkspaceAssistantPreview | null) => void): void; timingNow?(): MessageTimingInput | null; runtimePlatform?(): WorkspaceRuntimePlatform }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
 export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
@@ -30,7 +31,9 @@ export interface WorkspaceDevAgent { titleSource?: "default"; titleKey?: "core.n
   /** Core decision B: the stored tier cannot run on this Host platform until the user switches it. */
   permissionTierUnavailable?: true;
   archivedAt?: string; pausedScheduleCount?: number;
-  identity: { displayName: string; title?: string; shortTitle?: string; emoji?: string; avatar?: string; accent?: string; character?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
+  /** Core's immutable creation colour, projected at the top level. */
+  readonly initialAccent?: string;
+  identity: { displayName: string; title?: string; shortTitle?: string; emoji?: string; avatar?: string; accent?: string; character?: string; avatarStyle?: AgentAvatarStyle }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 /** Renderer edits only fields admitted by the current public persona RPC. Unchanged fields stay absent. */
 export interface WorkspaceAgentProfilePatch { displayName?: string; title?: string; emoji?: string; avatar?: string }
 export interface ColleagueCreateDraft { username: string; displayName: string; title: string; instructions: string;
@@ -748,6 +751,7 @@ export class WorkspaceDevModel {
         throw new WorkspaceViewError("ws.notice.invalidView");
     } finally { this.runtimeChanges.delete(targetKey); this.update({}); }
   }
+  supportsAgentAppearance(): boolean { return this.rpc.supportsCapability?.("workspace.agents.appearance.v1") === true; }
   supportsAgentArchive(): boolean { return this.rpc.supportsCapability?.("workspace.agents.archive.v1") === true; }
   /** Host OS write protection and the tiers it can run (decision B). Older Cores are treated as macOS. */
   runtimePlatform(): WorkspaceRuntimePlatform { return this.rpc.runtimePlatform?.() ?? DEFAULT_RUNTIME_PLATFORM; }

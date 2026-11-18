@@ -83,7 +83,7 @@ export async function prepareAgentAvatar(file: Pick<File, "size" | "arrayBuffer"
       canvas.width = canvas.height = size;
       context.drawImage(image, crop.x, crop.y, crop.side, crop.side, 0, 0, size, size);
       const output = canvas.toDataURL(mime, mime === "image/jpeg" ? 0.9 : undefined);
-      if (renderableAgentAvatar({ version: 1, source: "derived", displayName: "Avatar", avatar: output })) return output;
+      if (renderableAgentAvatar({ avatar: output })) return output;
     }
     throw new AvatarImageError("tooLarge");
   } catch (cause) { if (cause instanceof DOMException && cause.name === "AbortError") throw cause; if (cause instanceof AvatarImageError) throw cause; throw new AvatarImageError("encode"); }

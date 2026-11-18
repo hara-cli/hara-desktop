@@ -114,6 +114,13 @@
 .hd-unread-dot{display:block;flex:none;width:6px;height:6px;border-radius:50%;background:var(--hd-faint);margin:0 6px}
 .hs.hd-redesign.vg-app .hd-sidebar .hd-colleague-avatar{color:#1a1325;font-weight:600;overflow:hidden}
 .hd-colleague-avatar img{width:100%;height:100%;object-fit:cover}
+.hs.hd-redesign.vg-app .hd-colleague-avatar[data-avatar-style]{box-sizing:border-box}
+.hs.hd-redesign.vg-app .hd-colleague-avatar[data-avatar-style="circle"]{border-radius:50%}
+.hs.hd-redesign.vg-app .hd-colleague-avatar[data-avatar-style="squircle"]{border-radius:28%}
+.hs.hd-redesign.vg-app .hd-colleague-avatar[data-avatar-style="hex"]{border-radius:0;clip-path:polygon(25% 7%,75% 7%,100% 50%,75% 93%,25% 93%,0 50%)}
+.hs.hd-redesign.vg-app .hd-colleague-avatar[data-avatar-style="portrait"]{border-radius:14%}
+.hs.hd-redesign.vg-app .hd-colleague-avatar[data-avatar-style]:has(img){padding:2px}
+.hs.hd-redesign.vg-app .hd-colleague-avatar[data-avatar-style] img{border-radius:inherit}
 .hs.hd-redesign.vg-app .hd-sidebar .hd-group-avatar{display:grid;place-items:stretch;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;box-sizing:border-box;padding:3px;border-radius:9px;background:var(--hd-sunk)}
 .hd-group-avatar i,.hd-group-avatar b{min-width:0;min-height:0;border-radius:3px}
 .hd-group-avatar b{display:grid;place-items:center;font-size:8px;line-height:1;color:var(--hd-muted);font-weight:600}
@@ -198,10 +205,10 @@
 .hd-skip-composer{position:absolute;top:62px;left:24px;z-index:24;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;color:var(--hd-ink);background:var(--hd-menu);border-radius:8px}
 .hd-skip-composer:focus{width:auto;height:auto;padding:8px 12px;clip-path:none;outline:2px solid var(--hara-brand-primary);outline-offset:2px}
 
-/* S2: the selected conversation colours only the user's own controls and messages. */
-.hs.hd-redesign.vg-app .hs-chat .is-user .hs-bub{background:var(--chat-accent-deep,var(--hara-brand-primary));color:#fff}
+/* The appearance-capable Host leaves chat and control colours to semantic tokens. */
+.hs.hd-redesign.vg-app .hs-chat .is-user .hs-bub{background:var(--chat-accent-deep,var(--hara-chat-mine));color:var(--chat-mine-ink,var(--hara-chat-mine-ink))}
 .hs.hd-redesign.vg-app .hs-chat .hs-send:not(:disabled){background:var(--chat-accent-deep,var(--hara-brand-primary));color:#fff}
-.hs.hd-redesign.vg-app .hs-chat .hs-field:focus-within{border-color:var(--chat-accent-deep,var(--hara-brand-primary));box-shadow:0 0 0 1px var(--chat-accent-deep,var(--hara-brand-primary)),0 0 0 3px color-mix(in srgb,var(--chat-accent,var(--hara-brand-primary)) 18%,transparent)}
+.hs.hd-redesign.vg-app .hs-chat .hs-field:focus-within{border-color:var(--chat-accent-deep,var(--hara-focus-ring));box-shadow:0 0 0 1px var(--chat-accent-deep,var(--hara-focus-ring)),0 0 0 3px color-mix(in srgb,var(--chat-accent,var(--hara-focus-ring)) 18%,transparent)}
 .hs.hd-redesign.vg-app .vg-colleague-manage input[type="checkbox"]{accent-color:var(--chat-accent-deep,var(--hara-brand-primary))}
 .hs.hd-redesign.vg-app .hd-colleague-avatar img{display:block;width:100%;height:100%;object-fit:cover}
 

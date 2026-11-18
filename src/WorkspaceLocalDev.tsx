@@ -1,4 +1,5 @@
-import { agentConversationAccent } from "./agent-visual";
+import { agentAvatarAccent, agentConversationAccent } from "./agent-visual";
+import { WorkspaceAgentAppearance } from "./WorkspaceAgentAvatar";
 import { WorkspaceMessage } from "./WorkspaceMessage";
 import { messageTimeSeparator, messageTimeLabel } from "./conversation-message-layout";
 
@@ -13,7 +14,6 @@ import { WorkspaceSidebarC, type SidebarEntry } from "./WorkspaceSidebarC";
 import { WorkspaceUndoToast, type UndoNotice } from "./WorkspaceUndoToast";
 import { redesignText } from "./desktop-redesign-copy";
 import { rosterConversationActivity, rosterGroupMembers, type RosterPreference } from "./workspace-roster";
-import { agentAvatarAccent } from "./agent-visual";
 import "./desktop-redesign.css";
 import type { WorkspaceMediaAccess } from "./workspace-media";
 import { userVisibleText } from "./user-visible-text";
@@ -314,10 +314,13 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const routedScope = useRef<string | null>(null);
   const channelRouteSelection = useRef<string | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
+  const appearanceSupported = model.supportsAgentAppearance?.() === true;
   const themedAgent = route.section === "chat" ? agent : undefined;
-  const chatColors = agentConversationAccent(themedAgent?.agentId ?? "main", themedAgent?.identity, !themedAgent || themedAgent.kind === "main");
-  const conversationStyle = { "--chat-accent": chatColors.accent, "--chat-accent-deep": chatColors.deep,
-    "--hd-user": chatColors.deep, "--mine": chatColors.deep, "--mine-ink": "#ffffff" } as CSSProperties;
+  const legacyChatColors = appearanceSupported ? null : agentConversationAccent(themedAgent?.agentId ?? "main", themedAgent?.identity, !themedAgent || themedAgent.kind === "main");
+  const conversationStyle = legacyChatColors ? {
+    "--chat-accent": legacyChatColors.accent, "--chat-accent-deep": legacyChatColors.deep,
+    "--hd-user": legacyChatColors.deep, "--mine": legacyChatColors.deep, "--mine-ink": "#ffffff", "--chat-mine-ink": "#ffffff",
+  } as CSSProperties : undefined;
   const stageReports = useMemo(() => model.runtimeStageReports(), [model, workspace]);
   const followPreview = useCallback(() => { if (nearBottom.current) end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, []);
   const exportStageReport = useCallback((report: RuntimeStageReport) => model.exportRuntimeDiagnostic(report), [model]);
@@ -601,7 +604,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const rosterEntries: SidebarEntry[] = [
     ...dmRows.map(row => ({ id: row.agent.agentId, kind: "colleague" as const, name: row.agent.identity.displayName, role: row.agent.identity.title ?? "", shortRole: row.agent.identity.shortTitle, needsYou: shell.waiting.filter(item => item.agentId === row.agent.agentId).length, preview: row.preview, timestamp: row.timestamp, order: row.order, unread: shell.activity[row.agent.agentId]?.unread ?? 0, agent: row.agent })),
     ...(channelView.catalog?.channels ?? []).map(row => { const timestamp = row.lastMessageAt ?? row.createdAt, key = `channel:${row.id}`, read = activeRosterPrefs[key]?.readCount;
-      return { id: key, kind: "group" as const, name: row.name, role: r(row.memberIds.length === 1 ? "groupMember" : "groupMembers", { n: row.memberIds.length }), members: rosterGroupMembers(row.memberIds.map(id => { const member = agents.find(agent => agent.agentId === id); return { id, accent: agentAvatarAccent(id, member?.identity) }; }), groupSpeakers.scope === scope ? groupSpeakers.ids[row.id] : []), preview: row.activityAvailable === false ? r("activityUnavailable") : row.preview || r("noMessages"), timestamp, order: Date.parse(timestamp) || 0,
+      return { id: key, kind: "group" as const, name: row.name, role: r(row.memberIds.length === 1 ? "groupMember" : "groupMembers", { n: row.memberIds.length }), members: rosterGroupMembers(row.memberIds.map(id => { const member = agents.find(agent => agent.agentId === id); return { id, accent: agentAvatarAccent(id, member?.identity, appearanceSupported) }; }), groupSpeakers.scope === scope ? groupSpeakers.ids[row.id] : []), preview: row.activityAvailable === false ? r("activityUnavailable") : row.preview || r("noMessages"), timestamp, order: Date.parse(timestamp) || 0,
         unread: inChannel && channelView.channelId === row.id ? 0 : typeof read === "number" && typeof row.messageCount === "number" ? Math.max(0, row.messageCount - read) : 0 }; }),
   ];
   useEffect(() => {
@@ -661,7 +664,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     await openAgent(target.agentId);
     if (model.getSnapshot().workspace?.selectedAgentId === target.agentId) { setBrowser(false); setInspector(true); setRenameAgentId(rename ? target.agentId : null); }
   };
-  return <div className="hs wsd-app vg-app hd-redesign" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div style={conversationStyle} className={`hs-win${browser ? " has-browser" : showColleagueInspector || showGroupInspector || showContextInspector ? " has-inspector" : ""}`}>
+  return <WorkspaceAgentAppearance.Provider value={appearanceSupported}><div className="hs wsd-app vg-app hd-redesign" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div style={conversationStyle} className={`hs-win${browser ? " has-browser" : showColleagueInspector || showGroupInspector || showContextInspector ? " has-inspector" : ""}`}>
     <WorkspaceSidebarC locale={locale} workspaceId={view.workspaceId} workspaceName={workspace?.label ?? t("vg.workspace")} directory={view.directory} main={mainAgent} mainPreview={mainActivity.preview} mainEntry={mainEntry}
       mainActive={route.section === "chat" && view.agentId === mainAgent?.agentId} selectedId={inChannel ? `channel:${channelView.channelId}` : route.section === "chat" ? view.agentId : null}
       rename={inlineRename ? { ...inlineRename, duplicate: agents.some(row => row.state === "active" && row.agentId !== inlineRename.id && row.identity.displayName.trim().toLocaleLowerCase() === inlineRename.name.trim().toLocaleLowerCase()) } : null}
@@ -817,7 +820,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     {onboarding.surface === "sheet" && !settings && workspace ? <WorkspaceOnboarding state={onboarding} model={model} workspace={workspace} steps={ONBOARDING_STEP_VIEWS} /> : null}
     {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} onboarding={onboarding.available && onboarding.workspaceId ? { workspaceId: onboarding.workspaceId, readOnly: onboarding.progress?.readOnly === true, rerun: async () => { const result = await onboarding.rerun(); if (result === "started") closeSettings(); return result; } } : undefined} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
       onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} /> : null}
-  </div></div></div>;
+  </div></div></div></WorkspaceAgentAppearance.Provider>;
 }
 export default function WorkspaceLocalDev({ mode = "workspace" }: { mode?: "workspace" | "lab" }) {
   const { t } = useWorkspaceLocale();

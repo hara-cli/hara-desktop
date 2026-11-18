@@ -17,11 +17,29 @@ const PALETTES = [
   { accent: "#4f9c8f", accentAlt: "#83c5b9", skin: "#dca982", hair: "#262728", hairAlt: "#545052", outfit: "#315e5c", paper: "#dff1e8" },
   { accent: "#d99a32", accentAlt: "#f2c66b", skin: "#f0be92", hair: "#4a2f25", hairAlt: "#8c5b43", outfit: "#7c5825", paper: "#fff0c9" },
   { accent: "#6e88c8", accentAlt: "#9aafe1", skin: "#9f6f55", hair: "#1e2025", hairAlt: "#3f4655", outfit: "#3f4d78", paper: "#e3e9fa" },
-  { accent: "#a67bc2", accentAlt: "#cf9ddd", skin: "#edc5ad", hair: "#5a3645", hairAlt: "#9b6176", outfit: "#61436f", paper: "#f2e2f5" },
+  { accent: "#c68a72", accentAlt: "#e6b092", skin: "#edc5ad", hair: "#5a3645", hairAlt: "#9b6176", outfit: "#76513f", paper: "#fff0e7" },
   { accent: "#d1667b", accentAlt: "#ed9aac", skin: "#7d513e", hair: "#17191b", hairAlt: "#44474d", outfit: "#703543", paper: "#f8dfe5" },
   { accent: "#438db3", accentAlt: "#76bad4", skin: "#e6b995", hair: "#293943", hairAlt: "#52707d", outfit: "#28546b", paper: "#dceef5" },
   { accent: "#7f9a45", accentAlt: "#b2c875", skin: "#c98d68", hair: "#34291f", hairAlt: "#6f5942", outfit: "#4d5f2e", paper: "#e8efd6" },
 ] as const;
+
+/** The old Host's display keeps its preceding palette, including the violet slot. */
+const LEGACY_VIOLET = { ...PALETTES[4], accent: "#a67bc2", accentAlt: "#cf9ddd", outfit: "#61436f", paper: "#f2e2f5" } as const;
+export const AGENT_ACCENT_PALETTE = Object.freeze(PALETTES.map(palette => palette.accent));
+export type AgentAccent = typeof AGENT_ACCENT_PALETTE[number];
+
+export const AGENT_AVATAR_STYLES = ["circle", "squircle", "hex", "portrait"] as const;
+export type AgentAvatarStyle = typeof AGENT_AVATAR_STYLES[number];
+
+export function agentAccent(value: unknown): AgentAccent | undefined {
+  if (typeof value !== "string") return undefined;
+  const lower = value.trim().toLowerCase();
+  return AGENT_ACCENT_PALETTE.find(accent => accent === lower);
+}
+
+export function agentAvatarStyle(value: unknown): AgentAvatarStyle | undefined {
+  return AGENT_AVATAR_STYLES.find(style => style === value);
+}
 
 export const MAX_AGENT_AVATAR_BYTES = 128 * 1024;
 
@@ -60,14 +78,14 @@ export function agentInitials(value: string): string {
   return (words.length > 1 ? `${words[0][0]}${words[1][0]}` : label.slice(0, 2)).toUpperCase();
 }
 
-export function agentVisualTokens(agentRef: string, identity?: AgentPublicIdentity): AgentVisualTokens {
+export function agentVisualTokens(agentRef: string, identity?: AgentPublicIdentity, appearanceSupported = false): AgentVisualTokens {
   const hash = stableAgentHash(`${agentRef}\0${identity?.character ?? ""}`);
   const paletteIndex = hash % PALETTES.length;
   // Do not reuse the same low bits for both choices: that collapsed every generated
   // portrait into only eight palette/face pairs. Independent hash bytes yield up to
   // 64 stable combinations without persisting or downloading an avatar.
   const variant = (hash >>> 8) % 8;
-  const palette = PALETTES[paletteIndex];
+  const palette = !appearanceSupported && paletteIndex === 4 ? LEGACY_VIOLET : PALETTES[paletteIndex];
   return {
     ...palette,
     accent: identity?.accent ?? palette.accent,
@@ -76,7 +94,7 @@ export function agentVisualTokens(agentRef: string, identity?: AgentPublicIdenti
   };
 }
 
-export function renderableAgentAvatar(identity?: AgentPublicIdentity): string | undefined {
+export function renderableAgentAvatar(identity?: Pick<AgentPublicIdentity, "avatar">): string | undefined {
   const avatar = identity?.avatar;
   if (!avatar) return undefined;
   if (/^\/avatars\/[a-z0-9_./-]+$/i.test(avatar)) return avatar;
@@ -87,20 +105,23 @@ export function renderableAgentAvatar(identity?: AgentPublicIdentity): string | 
   return undefined;
 }
 
-/** Sidebar initials use dark ink; imported accents must use the contrast-verified palette. */
-export function agentAvatarAccent(agentRef: string, identity?: Pick<AgentPublicIdentity, "accent" | "character">): string {
-  const value = typeof identity?.accent === "string" ? identity.accent.trim().toLowerCase() : "";
-  return PALETTES.some(palette => palette.accent === value) ? value : agentVisualTokens(agentRef, {
+/** Sidebar initials use dark ink and only colours from the negotiated palette. */
+export function agentAvatarAccent(agentRef: string, identity?: Pick<AgentPublicIdentity, "accent" | "character">, appearanceSupported = false): string {
+  const value = agentAccent(identity?.accent);
+  if (appearanceSupported && value) return value;
+  if (!appearanceSupported) {
+    if (typeof identity?.accent === "string" && identity.accent.trim().toLowerCase() === LEGACY_VIOLET.accent) return LEGACY_VIOLET.accent;
+    if (value && value !== PALETTES[4].accent) return value;
+  }
+  return agentVisualTokens(agentRef, {
     ...identity, version: 1, source: "derived", displayName: agentRef, accent: undefined,
-  }).accent;
+  }, appearanceSupported).accent;
 }
 
-/** Closed palette for public appearance controls; arbitrary imported accents still use the same safe fallback. */
-export const AGENT_ACCENT_PALETTE = Object.freeze(PALETTES.map(palette => palette.accent));
 const CONVERSATION_ACCENT_DEEP = {
   "#ff695f": "#c04f47", "#4f9c8f": "#407f75", "#d99a32": "#966b23", "#6e88c8": "#5d74aa",
   "#a67bc2": "#87649e", "#d1667b": "#b25768", "#438db3": "#397898", "#7f9a45": "#637936",
-} satisfies Record<typeof PALETTES[number]["accent"], string>;
+} satisfies Record<Exclude<AgentAccent, typeof PALETTES[4]["accent"]> | typeof LEGACY_VIOLET["accent"], string>;
 
 export function agentConversationAccent(agentRef: string, identity?: Pick<AgentPublicIdentity, "accent" | "character">, main = false): { accent: string; deep: string } {
   if (main) return { accent: "#7C3AED", deep: "#7C3AED" };
