@@ -1,5 +1,5 @@
 /*
- * Hara design tokens · version 2.1.2 · sourceSha 363e99542888d219a9e9d351738595904da766264ea46d677bfdec70ccafe03f
+ * Hara design tokens · version 2.2.0 · sourceSha fbfb8b5ae64b2b11cd2c156f6a78af68b86f522a9244524245a86c2bfcabad6a
  * GENERATED from uiux/design-language/hara/DESIGN.md by build_tokens.mjs — do not edit by hand.
  */
 
@@ -82,6 +82,8 @@
   --hara-hit-min-desktop: 32px;
   --hara-hit-min-mobile: 44px;
   --hara-focus-ring-width: 2px;
+  --hara-card-max-width: 560px;
+  --hara-card-min-width: 296px;
   /* motion */
   --hara-dur-hover: 120ms;
   --hara-dur-press: 100ms;
@@ -90,6 +92,7 @@
   --hara-dur-sidebar: 200ms;
   --hara-dur-toast: 180ms;
   --hara-dur-thinking: 1600ms;
+  --hara-dur-state: 160ms;
   --hara-ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --hara-ease-out: cubic-bezier(0, 0, 0.2, 1);
 }
