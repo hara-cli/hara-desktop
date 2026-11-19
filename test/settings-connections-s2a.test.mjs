@@ -14,11 +14,16 @@ const bundle = await build({ stdin: { contents: 'export {WorkspaceConnections} f
 const module = { exports: {} }; new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const { createElement } = require("react"), { renderToStaticMarkup } = require("react-dom/server");
 const panels = readFileSync(new URL("../src/WorkspaceSettingsPanels.tsx", import.meta.url), "utf8");
-function render(element, locale = "zh-Hans") {
+function render(element, locale = "zh-Hans", platform = globalThis.navigator?.platform) {
   const before = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const navigatorBefore = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: key => key === "hara.locale" ? locale : null, setItem() {} } });
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { platform } });
   try { return renderToStaticMarkup(element); }
-  finally { if (before) Object.defineProperty(globalThis, "localStorage", before); else delete globalThis.localStorage; }
+  finally {
+    if (before) Object.defineProperty(globalThis, "localStorage", before); else delete globalThis.localStorage;
+    if (navigatorBefore) Object.defineProperty(globalThis, "navigator", navigatorBefore); else delete globalThis.navigator;
+  }
 }
 const row = (id, patch = {}) => ({ id, label: id === "one" ? "OpenRouter" : "Local", provider: "openai", defaultModel: "m", baseURL: `https://${id}.example.invalid/v1`, keyState: "saved", keySaved: true, status: "active", ...patch });
 const workspace = (connections, patch = {}) => ({ workspaceId: "A", resourceGeneration: "g", label: "A", agents: [], connections: { revision: 3, defaultConnectionId: "one", connections, ...patch } });
@@ -79,9 +84,9 @@ test("adding the first key warns that macOS may ask for Keychain permission; lat
   for (const locale of ["zh-Hans", "en", "zh-Hant"]) {
     const t = makeT(locale), hint = esc(t("ws.connections.keyNoteFirst"));
     assert.ok(t("ws.connections.keyNoteFirst").startsWith(t("ws.connections.keyNoteShort")), "same key line, one more sentence");
-    assert.ok(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: true }), locale).includes(`<small>${hint}</small>`));
-    assert.equal(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: false }), locale).includes(hint), false);
-    assert.equal(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: true, existing: row("one") }), locale).includes(hint), false, "editing never prompts again");
+    assert.ok(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: true }), locale, "MacIntel").includes(`<small>${hint}</small>`));
+    assert.equal(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: false }), locale, "MacIntel").includes(hint), false);
+    assert.equal(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: true, existing: row("one") }), locale, "MacIntel").includes(hint), false, "editing never prompts again");
   }
   assert.match(panels, /firstKey=\{!workspace\.connections\.connections\.some\(connection => connection\.keySaved\)\}/);
 });

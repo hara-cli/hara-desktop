@@ -5,7 +5,7 @@ import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { runtimeOperationText } from "./workspace-settings-copy";
 import { SettingsAdvanced, SettingsRowMenu } from "./SettingsChrome";
 import { SettingsActionResult } from "./SettingsActionDialog";
-import { settingsTranslator } from "./settings-device-copy";
+import { settingsDevicePlatform, settingsTranslator } from "./settings-device-copy";
 import { SettingsConnectionModelField } from "./SettingsConnectionModelField";
 import { type Key } from "./i18n";
 import type { RuntimeApprovalCard, RuntimeLoginSource, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceModelConnection } from "./workspace-dev-state";
@@ -146,7 +146,7 @@ export function WorkspaceConnectionForm({ model, existing, firstKey = false, set
     {settingsModels ? <SettingsConnectionModelField model={model} workspace={settingsModels} existing={existing} draft={{ provider, baseURL, keyEdited: apiKey !== "" }} value={defaultModel} disabled={saving || unknown} onChange={setDefaultModel} />
       : <label>{t("ws.connections.model")}<input value={defaultModel} disabled={saving || unknown} onChange={event => setDefaultModel(event.target.value)} autoComplete="off" required /></label>}
     <label>{t("ws.connections.apiKey")}{existing && !existing.credentialRequired ? t("ws.connections.keepKey") : ""}<input type="password" value={apiKey} disabled={saving || unknown} onChange={event => setKey(event.target.value)} autoComplete="new-password" spellCheck={false} required={!existing || existing.credentialRequired} /></label>
-    <small>{keyNote ?? t(firstKey && !existing ? "ws.connections.keyNoteFirst" : "ws.connections.keyNoteShort")}</small>
+    <small>{keyNote ?? t(firstKey && !existing && settingsDevicePlatform() === "mac" ? "ws.connections.keyNoteFirst" : "ws.connections.keyNoteShort")}</small>
     <SettingsActionResult text={reloadFailed ? t("ws.connections.reloadFailed") : unknown ? t(existing ? "ws.connections.editUnknown" : "ws.connections.saveUnknown") : ""} error />
     <div className="wsd-card-actions">{onCancel ? <button type="button" data-settings-cancel disabled={saving} onClick={() => { if (saveFence.current) return; setKey(""); onDirty?.(false); onCancel(); }}>{t("ws.cancel")}</button> : null}
       {unknown ? <button type="button" disabled={saving} onClick={() => void reload()}>{t("ws.connections.reloadAfterUnknown")}</button>
