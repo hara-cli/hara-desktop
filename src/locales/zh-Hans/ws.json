@@ -1476,7 +1476,7 @@
   "ws.connections.advanced.keyStorage": "Key 存储说明",
   "ws.connections.advanced.scope": "作用范围",
   "ws.connections.keyNoteShort": "密钥保存在本机安全存储中，保存后无法查看原文。",
-  "ws.connections.keyNoteFirst": "密钥保存在本机安全存储中，保存后无法查看原文。 首次保存时，macOS 可能请求钥匙串授权。",
+  "ws.connections.keyNoteFirst": "密钥保存在本机安全存储中，保存后无法查看原文。首次保存时，macOS 可能请求钥匙串授权。",
   "ws.schedules.human.once": "{date} {time} 一次",
   "ws.schedules.human.daily": "每天 {time}",
   "ws.schedules.human.weekdays": "每个工作日 {time}",

@@ -214,7 +214,7 @@ async function credentials(root, home) {
         await verifyRead(rpc, updated, rotated, keys[1]);
         await rpc("workspace.connection.delete", { ...scope(updated), connectionId: rotated.id, expectedRevision: updated.connections.revision, approved: true });
         return { keySaved: true, restartReadback: true, rotationReadback: true, addedRevision: reopened.connections.revision,
-          rotatedRevision: updated.connections.revision, localCatalogRequests: seen, externalProviderRequests: 0, modelCalls: 0 };
+          rotatedRevision: updated.connections.revision, loopbackCatalogRequests: seen, loopbackUnexpected: unexpected };
       });
     } finally { await second.stop(); }
   } finally {
