@@ -17,13 +17,18 @@ function fixture(t) {
   return root;
 }
 
-test("Windows credential bundle is required by the published Desk version independently of the Core pin", t => {
-  const root = fixture(t);
-  for (const [version, required] of [["1.2.3", false], ["1.3.0", true], ["1.3.1", true], ["1.10.0", true], ["2.0.0", true]]) {
-    writeJSON(join(root, "package.json"), { version });
+test("Windows credential bundle is required by either the Desk or pinned Core version", t => {
+  const root = fixture(t), pins = join(root, "src-tauri", "binaries"), version = join(pins, "SIDECAR_VERSION");
+  mkdirSync(pins, { recursive: true });
+  for (const [desk, core, required] of [
+    ["1.2.3", "1.2.3", false], ["1.2.3", "1.3.0", true], ["1.3.0", "1.2.3", true],
+    ["1.3.1", "1.3.1", true], ["1.10.0", "1.9.0", true], ["2.0.0", "1.2.3", true],
+  ]) {
+    writeJSON(join(root, "package.json"), { version: desk });
+    writeFileSync(version, core + "\n");
     assert.equal(windowsVaultRequired(root), required);
   }
-  writeJSON(join(root, "package.json"), { version: "unknown" });
+  writeFileSync(version, "unknown");
   assert.throws(() => windowsVaultRequired(root), /release version/);
 });
 

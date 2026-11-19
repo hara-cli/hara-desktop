@@ -1,14 +1,15 @@
 // Hosted Windows only. Exercise the actual installer, its Desktop, and its adjacent Workspace Core.
 import { spawn, spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { binarySHA, readWindowsVaultBinding, verifyWindowsVaultSidecar, windowsVaultRequired } from "./windows-vault-bundle.mjs";
 
-const check = (condition, message) => { if (!condition) throw new Error(message); };
+class SmokeError extends Error {}
+const check = (condition, message) => { if (!condition) throw new SmokeError(message); };
 const model = "hara-vault-smoke-model";
 const origin = "127.0.0.1";
 
@@ -86,7 +87,7 @@ async function start(root, home, previousInstance) {
       }
       await wait(400);
     }
-    throw new Error("Installed Workspace engine did not publish discovery");
+    throw new SmokeError("Installed Workspace engine did not publish discovery");
   } catch (error) {
     await stop();
     throw error;
@@ -106,13 +107,13 @@ async function withWorkspace(record, action) {
         if (error) reject(error); else resolve();
       };
       const opened = () => finish();
-      const failed = () => finish(new Error("Installed Core WebSocket could not connect"));
+      const failed = () => finish(new SmokeError("Installed Core WebSocket could not connect"));
       const timer = setTimeout(failed, 8000);
       socket.addEventListener("open", opened);
       socket.addEventListener("error", failed);
       socket.addEventListener("close", failed);
     });
-    const rpc = (method, params = {}) => new Promise((resolve, reject) => {
+    const rpc = (method, params = {}, expectVaultUnavailable = false) => new Promise((resolve, reject) => {
       const requestId = ++id;
       const finish = (error, result) => {
         clearTimeout(timer);
@@ -125,10 +126,13 @@ async function withWorkspace(record, action) {
         let response;
         try { response = JSON.parse(String(event.data)); } catch { return; }
         if (response.id !== requestId) return;
-        if (response.error || !Object.hasOwn(response, "result")) return failed();
-        finish(null, response.result);
+        if (expectVaultUnavailable) {
+          if (response.error?.data?.domain !== "credential-vault" || response.error.data.code !== "unavailable") return failed();
+          finish(null, true);
+        } else if (response.error || !Object.hasOwn(response, "result")) failed();
+        else finish(null, response.result);
       };
-      const failed = () => finish(new Error(`Installed Core failed ${method}`));
+      const failed = () => finish(new SmokeError(`Installed Core did not return the expected result for ${method}`));
       const timer = setTimeout(failed, 35_000);
       socket.addEventListener("message", receive);
       socket.addEventListener("close", failed);
@@ -210,12 +214,49 @@ async function credentials(root, home) {
         await verifyRead(rpc, updated, rotated, keys[1]);
         await rpc("workspace.connection.delete", { ...scope(updated), connectionId: rotated.id, expectedRevision: updated.connections.revision, approved: true });
         return { keySaved: true, restartReadback: true, rotationReadback: true, addedRevision: reopened.connections.revision,
-          rotatedRevision: updated.connections.revision, localCatalogRequests: seen, modelCalls: 0 };
+          rotatedRevision: updated.connections.revision, localCatalogRequests: seen, externalProviderRequests: 0, modelCalls: 0 };
       });
     } finally { await second.stop(); }
   } finally {
     await new Promise(resolve => server.close(resolve));
   }
+}
+
+async function rejectUnboundWorker(installed, profile, reason, expectedDigest) {
+  const testRoot = join(profile, reason), launcher = join(testRoot, "app"), home = join(testRoot, "home");
+  mkdirSync(launcher, { recursive: true });
+  mkdirSync(home);
+  // Use private copies of the installed executables. The installer and installed files stay untouched.
+  for (const binary of ["hara-desktop.exe", "hara.exe", "herdr.exe"]) copyFileSync(join(installed, binary), join(launcher, binary));
+  if (reason === "helper_invalid") {
+    const worker = join(launcher, "hara-credential-worker.exe");
+    copyFileSync(join(process.env.RUNNER_TEMP, "hara-vault-unbound-worker", "hara-credential-worker.exe"), worker);
+    check(binarySHA(worker) !== expectedDigest, "Wrong-digest worker fixture did not change bytes");
+    command(worker, [], { accepted: [65] }); // Valid worker executable takes the empty-stdin exit.
+  }
+  const localAppData = command("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    "[Environment]::GetFolderPath('LocalApplicationData')"]).trim();
+  const namespace = createHash("sha256").update("hara-host-home-v1\0")
+    .update(realpathSync.native(home).replaceAll("/", "\\")).digest("hex");
+  check(/^[a-z]:\\/iu.test(localAppData), "Cannot determine hosted DPAPI storage location");
+  const vaultHome = join(localAppData, "Hara", "credential-vault", "v1", namespace);
+  check(!existsSync(vaultHome), "Negative fixture vault namespace already exists");
+
+  const host = await start(launcher, home);
+  try {
+    return await withWorkspace(host.record, async (rpc, snapshot) => {
+      const before = await snapshot();
+      await rpc("workspace.connection.add", { ...scope(before), expectedRevision: before.connections.revision,
+        input: { label: "Windows negative smoke", provider: "openai", baseURL: "http://127.0.0.1:1/v1",
+          defaultModel: model, apiKey: randomBytes(24).toString("hex") } }, true);
+      const after = await snapshot(), status = await rpc("workspace.credentialStorage.get");
+      check(status.state === "unavailable" && status.reason === reason, "Windows credential refusal did not report the expected reason");
+      check(after.connections.revision === before.connections.revision
+        && after.connections.connections.length === before.connections.connections.length && !existsSync(vaultHome),
+      "Refused credential operation changed the connection store or the vault");
+      return { reason, configured: false, writes: 0 };
+    });
+  } finally { await host.stop(); }
 }
 
 async function main([releaseBase, output, mode]) {
@@ -227,7 +268,7 @@ async function main([releaseBase, output, mode]) {
   const receipt = required ? readWindowsVaultBinding() : null;
   const profile = mkdtempSync(join(process.env.USERPROFILE, "hara-install-smoke-"));
   mkdirSync(output, { recursive: true });
-  const results = [];
+  const results = [], refusals = [];
   for (const kind of required ? ["nsis", "msi"] : ["nsis"]) {
     const artifact = installer(resolve(releaseBase), kind);
     const root = join(profile, `installed-${kind}`), home = join(profile, `home-${kind}`);
@@ -237,9 +278,13 @@ async function main([releaseBase, output, mode]) {
     try {
       check(existsSync(join(root, "hara-desktop.exe")) && existsSync(join(root, "hara.exe")), "Installed Desktop or Core missing");
       if (receipt) {
-        verifyWindowsVaultSidecar(join(root, "hara.exe"), receipt);
+        const workerSHA256 = verifyWindowsVaultSidecar(join(root, "hara.exe"), receipt);
         results.push({ kind, installerSHA256: binarySHA(artifact), expectedWorkerSHA256: receipt.expectedWorkerSHA256,
-          workerSHA256: binarySHA(join(root, "hara-credential-worker.exe")), ...await credentials(root, home) });
+          workerSHA256, ...await credentials(root, home) });
+        if (kind === "nsis" && mode !== "--release-only") {
+          for (const reason of ["helper_invalid", "helper_missing"])
+            refusals.push(await rejectUnboundWorker(root, profile, reason, receipt.expectedWorkerSHA256));
+        }
       } else {
         const app = await start(root, home);
         await app.stop();
@@ -250,11 +295,11 @@ async function main([releaseBase, output, mode]) {
   // prepackage may check out a commit different from GITHUB_SHA.
   const desktopCommit = command("git", ["rev-parse", "HEAD"]).trim();
   check(/^[a-f0-9]{40}$/u.test(desktopCommit), "Installed smoke requires a known Desktop commit");
-  const result = { schemaVersion: 1, desktopCommit, coreCommit: receipt?.coreCommit ?? null, results };
+  const result = { schemaVersion: 1, desktopCommit, coreCommit: receipt?.coreCommit ?? null, results, refusals };
   writeFileSync(join(output, "windows-install-smoke.json"), JSON.stringify(result, null, 2) + "\n");
   console.log(JSON.stringify(result));
 }
 await main(process.argv.slice(2)).catch(error => {
-  console.error(`windows-install-smoke: ${error.message}`);
+  console.error(error instanceof SmokeError ? `windows-install-smoke: ${error.message}` : "windows-install-smoke: unexpected installer or fixture failure");
   process.exitCode = 1;
 });

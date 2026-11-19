@@ -16,11 +16,14 @@ const corePin = root => readFileSync(join(pins(root), "SIDECAR_COMMIT"), "utf8")
 const receiptFile = root => join(pins(root), "windows-vault-binding.json");
 
 export function windowsVaultRequired(root = desktop) {
-  const version = json(join(root, "package.json")).version;
-  const numbers = /^(\d+)\.(\d+)\.\d+$/u.exec(version);
-  if (!numbers) throw new Error("Invalid Desktop release version");
-  const major = Number(numbers[1]), minor = Number(numbers[2]);
-  return major > 1 || (major === 1 && minor >= 3);
+  const versions = [json(join(root, "package.json")).version,
+    readFileSync(join(pins(root), "SIDECAR_VERSION"), "utf8").trim()];
+  return versions.map(version => {
+    const numbers = /^(\d+)\.(\d+)\.\d+$/u.exec(version);
+    if (!numbers) throw new Error("Invalid Windows release version");
+    const major = Number(numbers[1]), minor = Number(numbers[2]);
+    return major > 1 || (major === 1 && minor >= 3);
+  }).includes(true);
 }
 
 export function binarySHA(path) {
@@ -30,7 +33,9 @@ export function binarySHA(path) {
 }
 
 function requireWorker(path, digest) {
-  if (binarySHA(path) !== digest) throw new Error("Windows credential worker SHA-256 mismatch");
+  const actual = binarySHA(path);
+  if (actual !== digest) throw new Error("Windows credential worker SHA-256 mismatch");
+  return actual;
 }
 
 export function verifiedWindowsVaultManifest(directory) {
@@ -52,7 +57,7 @@ export function readWindowsVaultBinding(root = desktop) {
 
 export function verifyWindowsVaultSidecar(sidecar, receipt) {
   if (binarySHA(sidecar) !== receipt.sidecarSHA256) throw new Error("Windows sidecar differs from the worker-bound Core build");
-  requireWorker(join(dirname(sidecar), worker), receipt.expectedWorkerSHA256);
+  return requireWorker(join(dirname(sidecar), worker), receipt.expectedWorkerSHA256);
 }
 
 function run(command, args, options) {
@@ -90,9 +95,18 @@ function main([command, input]) {
   const builder = join(core, "scripts", "build-windows-vault-worker.mjs");
   if (!existsSync(builder)) throw new Error("Pinned Core cannot build the v2 Windows credential worker");
   if (command === "prepare") {
-    run("rustup", ["toolchain", "install", "1.92.0-x86_64-pc-windows-msvc", "--profile", "minimal"], { cwd: core });
+    run("rustup", ["toolchain", "install", "1.92.0-x86_64-pc-windows-msvc", "--profile", "minimal", "--target", target], { cwd: core });
     run(process.execPath, [builder], { cwd: core });
     const digest = verifiedWindowsVaultManifest(directory);
+    if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+      // Rehearsal only: build a second legitimate v2 worker from the same source with different bytes.
+      const alternative = join(process.env.RUNNER_TEMP, "hara-vault-unbound-worker");
+      mkdirSync(alternative);
+      run("rustc", ["+1.92.0", "--edition=2021", `--target=${target}`, "-C", "opt-level=1",
+        "-C", "target-feature=+crt-static", "-C", "panic=abort", "-C", "strip=symbols",
+        "native/windows-credential-worker/main.rs", "-o", join(alternative, worker)], { cwd: core });
+      if (binarySHA(join(alternative, worker)) === digest) throw new Error("Rehearsal worker fixtures have identical bytes");
+    }
     mkdirSync(pins(desktop), { recursive: true });
     // This is the digest build-binary.ts validates and embeds in the next workflow command.
     writeFileSync(receiptFile(desktop), JSON.stringify({ schemaVersion: 1, protocolVersion: 2, target,

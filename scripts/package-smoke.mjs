@@ -242,8 +242,8 @@ function smokeInstalledSidecars(artifact, kind, label, wantedName, desktopName) 
       if (candidates.length !== 1 || desktopCandidates.length !== 1 || workers.length !== 1
           || dirname(candidates[0]) !== dirname(desktopCandidates[0]) || dirname(candidates[0]) !== dirname(workers[0]))
         throw new Error("Expected exactly one co-installed Desktop, Core, and credential worker");
-      verifyWindowsVaultSidecar(candidates[0], windowsVault);
-      ok(`${label} credential worker SHA-256 matches the Core build (${windowsVault.expectedWorkerSHA256})`);
+      const extractedSHA256 = verifyWindowsVaultSidecar(candidates[0], windowsVault);
+      ok(`${label} extracted credential worker SHA-256 ${extractedSHA256} equals the Core build digest ${windowsVault.expectedWorkerSHA256}`);
     }
     if (desktopCandidates.length === 0) {
       fail(`${label} does not contain ${desktopName}: ${basename(artifact)}`);
