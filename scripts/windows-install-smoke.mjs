@@ -6,6 +6,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { binarySHA, readWindowsVaultBinding, verifyWindowsVaultSidecar, windowsVaultRequired } from "./windows-vault-bundle.mjs";
 
 class SmokeError extends Error {}
@@ -105,7 +106,7 @@ async function start(root, home, { previousInstance, direct = false } = {}) {
   }
 }
 
-async function withWorkspace(record, action, backend = "windows-dpapi") {
+export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId } = {}) {
   const socket = new WebSocket(`ws://${origin}:${record.port}`);
   let id = 0;
   try {
@@ -156,8 +157,21 @@ async function withWorkspace(record, action, backend = "windows-dpapi") {
     const init = await rpc("initialize", { token: record.token });
     check(init.capabilities?.includes("workspace.v1") && init.capabilities.includes("workspace.credential-storage.v1")
       && init.credentialStorage?.backend === backend, "Core did not advertise the expected credential backend");
-    const workspaceId = init.workspace?.activeWorkspaceId ?? init.workspace?.workspaces?.[0]?.workspaceId;
-    check(typeof workspaceId === "string", "Installed Core has no smoke Workspace");
+    // A clean install has a Host and an empty catalog until a client creates a Workspace.
+    const directory = await rpc("workspace.list");
+    check(Array.isArray(directory?.workspaces) && Number.isSafeInteger(directory.revision) && directory.revision > 0,
+      "Installed Core did not return the smoke Workspace directory");
+    let workspaceId = directory.activeWorkspaceId;
+    if (expectedWorkspaceId === undefined && workspaceId === null && directory.workspaces.length === 0) {
+      const created = await rpc("workspace.create", { label: "Windows smoke Workspace", expectedRevision: directory.revision });
+      workspaceId = created?.workspaceId;
+    } else {
+      check(directory.workspaces.some(row => row?.workspaceId === workspaceId && row.active === true),
+        "Installed Core has no active smoke Workspace");
+    }
+    check(typeof workspaceId === "string" && workspaceId.length > 0, "Installed Core has no smoke Workspace");
+    check(expectedWorkspaceId === undefined || workspaceId === expectedWorkspaceId,
+      "Installed Core did not reopen the same smoke Workspace");
     return await action(rpc, () => rpc("workspace.snapshot", { workspaceId, agentId: null }));
   } finally { socket.close(); }
 }
@@ -209,27 +223,27 @@ async function credentials(root, home) {
         const after = await snapshot();
         const row = savedConnection(after);
         check(after.connections.revision > before.connections.revision, "Add did not advance connection revision");
-        return row;
+        return { workspaceId: before.workspaceId, row };
       });
     } finally { await first.stop(); }
     const second = await start(root, home, { previousInstance: first.record.instanceId });
     try {
       return await withWorkspace(second.record, async (rpc, snapshot) => {
         const reopened = await snapshot();
-        const original = savedConnection(reopened, saved.id);
-        check(original.credentialGeneration === saved.credentialGeneration && original.revision === saved.revision,
+        const original = savedConnection(reopened, saved.row.id);
+        check(original.credentialGeneration === saved.row.credentialGeneration && original.revision === saved.row.revision,
           "Restart did not preserve the saved connection");
         await verifyRead(rpc, reopened, original, keys[0]);
-        await rpc("workspace.connection.edit", { ...scope(reopened), connectionId: saved.id, expectedRevision: reopened.connections.revision, input: input(keys[1]) });
+        await rpc("workspace.connection.edit", { ...scope(reopened), connectionId: original.id, expectedRevision: reopened.connections.revision, input: input(keys[1]) });
         const updated = await snapshot();
-        const rotated = savedConnection(updated, saved.id);
+        const rotated = savedConnection(updated, original.id);
         check(updated.connections.revision > reopened.connections.revision && rotated.credentialGeneration !== original.credentialGeneration,
           "Edit did not rotate the credential and advance the revision");
         await verifyRead(rpc, updated, rotated, keys[1]);
         await rpc("workspace.connection.delete", { ...scope(updated), connectionId: rotated.id, expectedRevision: updated.connections.revision, approved: true });
         return { keySaved: true, restartReadback: true, rotationReadback: true, addedRevision: reopened.connections.revision,
           rotatedRevision: updated.connections.revision, loopbackCatalogRequests: seen, loopbackUnexpected: unexpected };
-      });
+      }, { expectedWorkspaceId: saved.workspaceId });
     } finally { await second.stop(); }
   } finally {
     await new Promise(resolve => server.close(resolve));
@@ -274,7 +288,7 @@ async function verifyCredentialRefusal(installed, profile, reason, binding) {
         && after.connections.connections.length === before.connections.connections.length && !existsSync(vaultHome),
       "Refused credential operation changed the connection store or the vault");
       return { code, reason, configured: false, writes: 0 };
-    }, direct ? "none" : "windows-dpapi");
+    }, { backend: direct ? "none" : "windows-dpapi" });
   } finally { await host.stop(); }
 }
 
@@ -318,7 +332,9 @@ async function main([releaseBase, output, mode]) {
   writeFileSync(join(output, "windows-install-smoke.json"), JSON.stringify(result, null, 2) + "\n");
   console.log(JSON.stringify(result));
 }
-await main(process.argv.slice(2)).catch(error => {
-  console.error(error instanceof SmokeError ? `windows-install-smoke: ${error.message}` : "windows-install-smoke: unexpected installer or fixture failure");
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main(process.argv.slice(2)).catch(error => {
+    console.error(error instanceof SmokeError ? `windows-install-smoke: ${error.message}` : "windows-install-smoke: unexpected installer or fixture failure");
+    process.exitCode = 1;
+  });
+}
