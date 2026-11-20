@@ -15,7 +15,9 @@ mod system_visual_preferences;
 mod workspace_media;
 mod update_channel;
 mod dev_updater;
-#[cfg(test)]
+// Tauri's mock app links Windows Common Controls v6 imports, but the
+// Windows lib test harness lacks the packaged application's manifest.
+#[cfg(all(test, not(windows)))]
 mod dev_updater_tests;
 #[cfg(windows)]
 mod windows_process;
