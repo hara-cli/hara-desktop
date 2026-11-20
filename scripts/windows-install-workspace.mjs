@@ -19,25 +19,27 @@ const publicCodes = new Set([
   "view_changed", "connection_invalid", "connection_models_invalid", "connection_unavailable",
   "connection_delete_approval", "state_changed", "state_full",
 ]);
+const rpcDomains = new Set(["credential-vault"]);
 const vaultReasons = new Set([
   "platform_unsupported", "architecture_unsupported", "host_binding_unavailable", "helper_missing",
   "helper_invalid", "access_denied", "backend_unavailable", "windows_desktop_required",
 ]);
 const vaultRetries = new Set(["none", "explicit_user_only", "readback_only"]);
 const vaultStates = new Set(["not_checked", "ready", "unavailable", "unsupported"]);
-const permitted = (values, value) => values.has(value) ? value : null;
+const permitted = (values, value) => value == null ? null : values.has(value) ? value : "other";
 
 class SmokeRpcError extends SmokeError {
   constructor(method, kind, error) {
-    const safeMethod = permitted(rpcMethods, method);
+    const safeMethod = rpcMethods.has(method) ? method : null;
     super("Installed Core RPC failed: " + (safeMethod ?? "unknown") + " (" + kind + ")");
     const data = error?.data;
-    const domain = data?.domain === "credential-vault" ? "credential-vault" : null;
+    const domain = permitted(rpcDomains, data?.domain);
+    const vaultError = domain === "credential-vault";
     this.diagnostic = { method: safeMethod, kind, error: kind === "rpc_error" ? {
-      code: permitted(rpcCodes, error?.code),
-      data: { domain, code: permitted(domain ? vaultCodes : publicCodes, data?.code),
-        reason: domain ? permitted(vaultReasons, data?.reason) : null,
-        retry: domain ? permitted(vaultRetries, data?.retry) : null },
+      code: rpcCodes.has(error?.code) ? error.code : null,
+      data: { domain, code: permitted(vaultError ? vaultCodes : publicCodes, data?.code),
+        reason: vaultError ? permitted(vaultReasons, data?.reason) : null,
+        retry: vaultError ? permitted(vaultRetries, data?.retry) : null },
     } : null, credentialStorage: null };
   }
 }
