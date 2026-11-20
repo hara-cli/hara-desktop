@@ -2,7 +2,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
@@ -223,17 +223,22 @@ async function main([releaseBase, output, mode]) {
   check(process.platform === "win32" && process.env.GITHUB_ACTIONS === "true" && process.env.RUNNER_ENVIRONMENT === "github-hosted"
     && process.env.RUNNER_TEMP && process.env.USERPROFILE, "GitHub-hosted Windows runner only");
   check(releaseBase && output && (mode === undefined || mode === "--release-only"), "Invalid Windows install smoke arguments");
-  const required = windowsVaultRequired();
-  if (!required && mode === "--release-only") return;
   mkdirSync(output, { recursive: true });
+  const receiptPath = join(output, "windows-install-smoke.json");
+  // One smoke invocation owns this runner output. Clear any old receipt before publishing.
+  rmSync(receiptPath, { force: true });
   const result = { schemaVersion: 1, desktopCommit: null, coreCommit: null, results: [], refusals: [] };
   let installerKind = null, scenario = null, rpcFailure = null;
   const onRpcFailure = diagnostic => { rpcFailure = diagnostic; };
   const publish = value => {
-    writeFileSync(join(output, "windows-install-smoke.json"), JSON.stringify(value, null, 2) + "\n", { flag: "wx" });
+    const pending = join(output, `.windows-install-smoke-${randomBytes(8).toString("hex")}.tmp`);
+    writeFileSync(pending, JSON.stringify(value, null, 2) + "\n", { flag: "wx" });
+    renameSync(pending, receiptPath);
     console.log(JSON.stringify(value));
   };
   try {
+    const required = windowsVaultRequired();
+    if (!required && mode === "--release-only") return;
     // prepackage may check out a commit different from GITHUB_SHA.
     const desktopCommit = command("git", ["rev-parse", "HEAD"]).trim();
     check(/^[a-f0-9]{40}$/u.test(desktopCommit), "Installed smoke requires a known Desktop commit");

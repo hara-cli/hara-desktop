@@ -112,7 +112,7 @@ test("installer smoke reports only allowed RPC data and reads back the credentia
   await assert.rejects(withWorkspace(record, rpc => rpc("workspace.connection.add", { input: { apiKey: privateText } }),
     { onRpcFailure: value => { diagnostic = value; } }), /Installed Core RPC failed: workspace.connection.add/);
   assert.deepEqual(diagnostic, { method: "workspace.connection.add", kind: "rpc_error",
-    error: { code: -32602, data: { domain: "credential-vault", code: "unavailable", reason: null, retry: "explicit_user_only" } },
+    error: { code: -32602, data: { domain: "credential-vault", code: "unavailable", reason: "other", retry: "explicit_user_only" } },
     credentialStorage: { state: "unavailable", reason: "helper_invalid" } });
   assert(!JSON.stringify(diagnostic).includes(privateText));
   assert.deepEqual(calls.map(([method]) => method), ["initialize", "workspace.list", "workspace.connection.add", "workspace.credentialStorage.get"]);
@@ -126,7 +126,7 @@ test("installer smoke discards unlisted methods, codes and provider text", async
   let diagnostic;
   await assert.rejects(withWorkspace(record, rpc => rpc(unknown), { onRpcFailure: value => { diagnostic = value; } }), /RPC failed: unknown/);
   assert.deepEqual(diagnostic, { method: null, kind: "rpc_error",
-    error: { code: null, data: { domain: null, code: null, reason: null, retry: null } }, credentialStorage: null });
+    error: { code: null, data: { domain: "other", code: "other", reason: null, retry: null } }, credentialStorage: null });
   assert.equal(calls.length, 3);
 });
 
