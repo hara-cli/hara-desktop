@@ -3,7 +3,46 @@ export class SmokeError extends Error {}
 export const check = (condition, message) => { if (!condition) throw new SmokeError(message); };
 export const origin = "127.0.0.1";
 
-export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId } = {}) {
+// Only these literals from the Core credential and RPC contracts reach public receipts.
+const rpcMethods = new Set([
+  "initialize", "workspace.list", "workspace.create", "workspace.snapshot", "workspace.credentialStorage.get",
+  "workspace.connection.add", "workspace.connection.edit", "workspace.connection.delete", "workspace.connection.listModels",
+]);
+const rpcCodes = new Set([-32001, -32602]);
+const vaultCodes = new Set([
+  "unsupported", "unavailable", "access_denied", "credential_unreadable", "write_unconfirmed", "cleanup_unconfirmed", "invalid_request",
+]);
+const publicCodes = new Set([
+  "request_failed", "unauthorized", "request_invalid", "parameters_invalid", "fields_unsupported", "method_unsupported",
+  "workspace_unavailable", "workspace_revoked", "workspace_generation_changed", "workspace_catalog_changed",
+  "workspace_directory_changed", "workspace_closing", "workspace_restarting", "agent_unavailable",
+  "view_changed", "connection_invalid", "connection_models_invalid", "connection_unavailable",
+  "connection_delete_approval", "state_changed", "state_full",
+]);
+const vaultReasons = new Set([
+  "platform_unsupported", "architecture_unsupported", "host_binding_unavailable", "helper_missing",
+  "helper_invalid", "access_denied", "backend_unavailable", "windows_desktop_required",
+]);
+const vaultRetries = new Set(["none", "explicit_user_only", "readback_only"]);
+const vaultStates = new Set(["not_checked", "ready", "unavailable", "unsupported"]);
+const permitted = (values, value) => values.has(value) ? value : null;
+
+class SmokeRpcError extends SmokeError {
+  constructor(method, kind, error) {
+    const safeMethod = permitted(rpcMethods, method);
+    super("Installed Core RPC failed: " + (safeMethod ?? "unknown") + " (" + kind + ")");
+    const data = error?.data;
+    const domain = data?.domain === "credential-vault" ? "credential-vault" : null;
+    this.diagnostic = { method: safeMethod, kind, error: kind === "rpc_error" ? {
+      code: permitted(rpcCodes, error?.code),
+      data: { domain, code: permitted(domain ? vaultCodes : publicCodes, data?.code),
+        reason: domain ? permitted(vaultReasons, data?.reason) : null,
+        retry: domain ? permitted(vaultRetries, data?.retry) : null },
+    } : null, credentialStorage: null };
+  }
+}
+
+export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId, onRpcFailure } = {}) {
   const socket = new WebSocket(`ws://${origin}:${record.port}`);
   let id = 0;
   try {
@@ -22,53 +61,76 @@ export async function withWorkspace(record, action, { backend = "windows-dpapi",
       socket.addEventListener("error", failed);
       socket.addEventListener("close", failed);
     });
-    const rpc = (method, params = {}, expectedVaultError) => new Promise((resolve, reject) => {
+    const rpc = (method, params = {}, expectedVaultError, timeoutMs = 35_000) => new Promise((resolve, reject) => {
       const requestId = ++id;
       const finish = (error, result) => {
         clearTimeout(timer);
         socket.removeEventListener("message", receive);
-        socket.removeEventListener("close", failed);
-        socket.removeEventListener("error", failed);
+        socket.removeEventListener("close", closed);
+        socket.removeEventListener("error", socketError);
         if (error) reject(error); else resolve(result);
       };
       const receive = event => {
         let response;
         try { response = JSON.parse(String(event.data)); } catch { return; }
-        if (response.id !== requestId) return;
+        if (!response || typeof response !== "object" || response.id !== requestId) return;
+        const { error } = response;
         if (expectedVaultError) {
-          const error = response.error;
-          if (error?.data?.domain !== "credential-vault" || error.data.code !== expectedVaultError) return failed();
+          if (error?.data?.domain !== "credential-vault" || error.data.code !== expectedVaultError)
+            return failed(error ? "rpc_error" : "unexpected_result", error);
           if (expectedVaultError === "unsupported" &&
-              (error.data.retry !== "none" || typeof error.message !== "string" || !error.message.includes("Hara Desktop"))) return failed();
+              (error.data.retry !== "none" || typeof error.message !== "string" || !error.message.includes("Hara Desktop")))
+            return failed("rpc_error", error);
           finish(null, true);
-        } else if (response.error || !Object.hasOwn(response, "result")) failed();
+        } else if (error) failed("rpc_error", error);
+        else if (!Object.hasOwn(response, "result")) failed("invalid_response");
         else finish(null, response.result);
       };
-      const failed = () => finish(new SmokeError(`Installed Core did not return the expected result for ${method}`));
-      const timer = setTimeout(failed, 35_000);
+      const failed = (kind, error) => finish(new SmokeRpcError(method, kind, error));
+      const closed = () => failed("socket_closed");
+      const socketError = () => failed("socket_error");
+      const timer = setTimeout(() => failed("timeout"), timeoutMs);
       socket.addEventListener("message", receive);
-      socket.addEventListener("close", failed);
-      socket.addEventListener("error", failed);
-      try { socket.send(JSON.stringify({ jsonrpc: "2.0", id: requestId, method, params })); } catch { failed(); }
+      socket.addEventListener("close", closed);
+      socket.addEventListener("error", socketError);
+      try { socket.send(JSON.stringify({ jsonrpc: "2.0", id: requestId, method, params })); } catch { failed("send_failed"); }
     });
-    const init = await rpc("initialize", { token: record.token });
-    check(init.capabilities?.includes("workspace.v1") && init.capabilities.includes("workspace.credential-storage.v1")
-      && init.credentialStorage?.backend === backend, "Core did not advertise the expected credential backend");
-    // A clean install has a Host and an empty catalog until a client creates a Workspace.
-    const directory = await rpc("workspace.list");
-    check(Array.isArray(directory?.workspaces) && Number.isSafeInteger(directory.revision) && directory.revision > 0,
-      "Installed Core did not return the smoke Workspace directory");
-    let workspaceId = directory.activeWorkspaceId;
-    if (expectedWorkspaceId === undefined && workspaceId === null && directory.workspaces.length === 0) {
-      const created = await rpc("workspace.create", { label: "Windows smoke Workspace", expectedRevision: directory.revision });
-      workspaceId = created?.workspaceId;
-    } else {
-      check(directory.workspaces.some(row => row?.workspaceId === workspaceId && row.active === true),
-        "Installed Core has no active smoke Workspace");
+    try {
+      const init = await rpc("initialize", { token: record.token });
+      check(init.capabilities?.includes("workspace.v1") && init.capabilities.includes("workspace.credential-storage.v1")
+        && init.credentialStorage?.backend === backend, "Core did not advertise the expected credential backend");
+      // A clean install has a Host and an empty catalog until a client creates a Workspace.
+      const directory = await rpc("workspace.list");
+      check(Array.isArray(directory?.workspaces) && Number.isSafeInteger(directory.revision) && directory.revision > 0,
+        "Installed Core did not return the smoke Workspace directory");
+      let workspaceId = directory.activeWorkspaceId;
+      if (expectedWorkspaceId === undefined && workspaceId === null && directory.workspaces.length === 0) {
+        const created = await rpc("workspace.create", { label: "Windows smoke Workspace", expectedRevision: directory.revision });
+        workspaceId = created?.workspaceId;
+      } else {
+        check(directory.workspaces.some(row => row?.workspaceId === workspaceId && row.active === true),
+          "Installed Core has no active smoke Workspace");
+      }
+      check(typeof workspaceId === "string" && workspaceId.length > 0, "Installed Core has no smoke Workspace");
+      check(expectedWorkspaceId === undefined || workspaceId === expectedWorkspaceId,
+        "Installed Core did not reopen the same smoke Workspace");
+      return await action(rpc, () => rpc("workspace.snapshot", { workspaceId, agentId: null }));
+    } catch (error) {
+      if (error instanceof SmokeRpcError) {
+        const diagnostic = error.diagnostic;
+        // c85eaab puts the worker reason on its current descriptor, not on the error wire data.
+        if (diagnostic.error?.data.domain === "credential-vault" &&
+            diagnostic.method !== "workspace.credentialStorage.get" && socket.readyState === WebSocket.OPEN) {
+          try {
+            const descriptor = await rpc("workspace.credentialStorage.get", {}, undefined, 5000);
+            diagnostic.credentialStorage = {
+              state: permitted(vaultStates, descriptor?.state), reason: permitted(vaultReasons, descriptor?.reason),
+            };
+          } catch { /* Best-effort read only. Keep the original failure. */ }
+        }
+        onRpcFailure?.(diagnostic);
+      }
+      throw error;
     }
-    check(typeof workspaceId === "string" && workspaceId.length > 0, "Installed Core has no smoke Workspace");
-    check(expectedWorkspaceId === undefined || workspaceId === expectedWorkspaceId,
-      "Installed Core did not reopen the same smoke Workspace");
-    return await action(rpc, () => rpc("workspace.snapshot", { workspaceId, agentId: null }));
   } finally { socket.close(); }
 }

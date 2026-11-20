@@ -14,10 +14,14 @@ const empty = { revision: 7, activeWorkspaceId: null, workspaces: [] };
 const active = { revision: 8, activeWorkspaceId: "ws_smoke", workspaces: [{ workspaceId: "ws_smoke", active: true }] };
 const snapshot = { workspaceId: "ws_smoke", resourceGeneration: "gen_fixture" };
 
+const socketClosed = Symbol("socket closed");
+
 function fixture(t, responses) {
   const calls = [];
   const previous = globalThis.WebSocket;
   globalThis.WebSocket = class extends EventTarget {
+    static OPEN = 1;
+    readyState = 1;
     constructor() {
       super();
       queueMicrotask(() => this.dispatchEvent(new Event("open")));
@@ -26,9 +30,13 @@ function fixture(t, responses) {
       const { id, method, params } = JSON.parse(frame);
       calls.push([method, params]);
       const result = responses[method];
-      queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
-        id, ...(Object.hasOwn(responses, method) ? { result } : { error: { code: -32601 } }),
-      }) })));
+      if (result === socketClosed) {
+        queueMicrotask(() => this.dispatchEvent(new Event("close")));
+        return;
+      }
+      const reply = typeof result === "function" ? result() : Object.hasOwn(responses, method)
+        ? { result } : { error: { code: -32601 } };
+      queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ id, ...reply }) })));
     }
     close() {}
   };
@@ -90,4 +98,50 @@ test("installer smoke runs its hosted runner gate when invoked through a directo
   assert.ifError(result.error);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /^windows-install-smoke: GitHub-hosted Windows runner only\r?\n$/);
+});
+
+test("installer smoke reports only allowed RPC data and reads back the credential descriptor", async t => {
+  const privateText = "private-path-or-credential";
+  const calls = fixture(t, { initialize: init, "workspace.list": active,
+    "workspace.connection.add": () => ({ error: { code: -32602, message: privateText,
+      data: { domain: "credential-vault", code: "unavailable", reason: privateText, retry: "explicit_user_only",
+        params: { key: privateText }, technicalDetail: privateText } } }),
+    "workspace.credentialStorage.get": { state: "unavailable", reason: "helper_invalid", home: privateText },
+  });
+  let diagnostic;
+  await assert.rejects(withWorkspace(record, rpc => rpc("workspace.connection.add", { input: { apiKey: privateText } }),
+    { onRpcFailure: value => { diagnostic = value; } }), /Installed Core RPC failed: workspace.connection.add/);
+  assert.deepEqual(diagnostic, { method: "workspace.connection.add", kind: "rpc_error",
+    error: { code: -32602, data: { domain: "credential-vault", code: "unavailable", reason: null, retry: "explicit_user_only" } },
+    credentialStorage: { state: "unavailable", reason: "helper_invalid" } });
+  assert(!JSON.stringify(diagnostic).includes(privateText));
+  assert.deepEqual(calls.map(([method]) => method), ["initialize", "workspace.list", "workspace.connection.add", "workspace.credentialStorage.get"]);
+});
+
+test("installer smoke discards unlisted methods, codes and provider text", async t => {
+  const unknown = "unlisted-private-value";
+  const calls = fixture(t, { initialize: init, "workspace.list": active,
+    [unknown]: () => ({ error: { code: -34567, message: unknown, data: { domain: unknown, code: unknown, reason: unknown, retry: unknown } } }),
+  });
+  let diagnostic;
+  await assert.rejects(withWorkspace(record, rpc => rpc(unknown), { onRpcFailure: value => { diagnostic = value; } }), /RPC failed: unknown/);
+  assert.deepEqual(diagnostic, { method: null, kind: "rpc_error",
+    error: { code: null, data: { domain: null, code: null, reason: null, retry: null } }, credentialStorage: null });
+  assert.equal(calls.length, 3);
+});
+
+test("installer smoke distinguishes WebSocket closure from an RPC error", async t => {
+  const calls = fixture(t, { initialize: init, "workspace.list": active, "workspace.connection.add": socketClosed });
+  let diagnostic;
+  await assert.rejects(withWorkspace(record, rpc => rpc("workspace.connection.add"),
+    { onRpcFailure: value => { diagnostic = value; } }), /socket_closed/);
+  assert.deepEqual(diagnostic, { method: "workspace.connection.add", kind: "socket_closed", error: null, credentialStorage: null });
+  assert.deepEqual(calls.map(([method]) => method), ["initialize", "workspace.list", "workspace.connection.add"]);
+});
+
+test("installer smoke preserves an expected credential refusal without publishing a failure", async t => {
+  fixture(t, { initialize: init, "workspace.list": active,
+    "workspace.connection.add": () => ({ error: { code: -32602, data: { domain: "credential-vault", code: "unavailable" } } }),
+  });
+  assert.equal(await withWorkspace(record, rpc => rpc("workspace.connection.add", {}, "unavailable"), { onRpcFailure: assert.fail }), true);
 });

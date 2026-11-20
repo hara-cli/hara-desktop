@@ -114,7 +114,7 @@ function savedConnection(view, id) {
   return row;
 }
 
-async function credentials(root, home) {
+async function credentials(root, home, onRpcFailure) {
   const keys = [randomBytes(24).toString("hex"), randomBytes(24).toString("hex")];
   let expected = null, seen = 0, unexpected = 0;
   const server = createServer((req, res) => {
@@ -151,7 +151,7 @@ async function credentials(root, home) {
         const row = savedConnection(after);
         check(after.connections.revision > before.connections.revision, "Add did not advance connection revision");
         return { workspaceId: before.workspaceId, row };
-      });
+      }, { onRpcFailure });
     } finally { await first.stop(); }
     const second = await start(root, home, { previousInstance: first.record.instanceId });
     try {
@@ -170,14 +170,14 @@ async function credentials(root, home) {
         await rpc("workspace.connection.delete", { ...scope(updated), connectionId: rotated.id, expectedRevision: updated.connections.revision, approved: true });
         return { keySaved: true, restartReadback: true, rotationReadback: true, addedRevision: reopened.connections.revision,
           rotatedRevision: updated.connections.revision, loopbackCatalogRequests: seen, loopbackUnexpected: unexpected };
-      }, { expectedWorkspaceId: saved.workspaceId });
+      }, { expectedWorkspaceId: saved.workspaceId, onRpcFailure });
     } finally { await second.stop(); }
   } finally {
     await new Promise(resolve => server.close(resolve));
   }
 }
 
-async function verifyCredentialRefusal(installed, profile, reason, binding) {
+async function verifyCredentialRefusal(installed, profile, reason, binding, onRpcFailure) {
   const direct = reason === "windows_desktop_required";
   const code = direct ? "unsupported" : "unavailable";
   const testRoot = join(profile, reason), launcher = join(testRoot, "app"), home = join(testRoot, "home");
@@ -215,7 +215,7 @@ async function verifyCredentialRefusal(installed, profile, reason, binding) {
         && after.connections.connections.length === before.connections.connections.length && !existsSync(vaultHome),
       "Refused credential operation changed the connection store or the vault");
       return { code, reason, configured: false, writes: 0 };
-    }, { backend: direct ? "none" : "windows-dpapi" });
+    }, { backend: direct ? "none" : "windows-dpapi", onRpcFailure });
   } finally { await host.stop(); }
 }
 
@@ -225,39 +225,54 @@ async function main([releaseBase, output, mode]) {
   check(releaseBase && output && (mode === undefined || mode === "--release-only"), "Invalid Windows install smoke arguments");
   const required = windowsVaultRequired();
   if (!required && mode === "--release-only") return;
-  const receipt = required ? readWindowsVaultBinding() : null;
-  const profile = mkdtempSync(join(process.env.USERPROFILE, "hara-install-smoke-"));
   mkdirSync(output, { recursive: true });
-  const results = [], refusals = [];
-  for (const kind of required ? ["nsis", "msi"] : ["nsis"]) {
-    const artifact = installer(resolve(releaseBase), kind);
-    const root = join(profile, `installed-${kind}`), home = join(profile, `home-${kind}`);
-    mkdirSync(home);
-    const uninstall = install(artifact, kind, root);
-    console.log(`Verifying installed ${kind} Desktop and Core`);
-    try {
-      check(existsSync(join(root, "hara-desktop.exe")) && existsSync(join(root, "hara.exe")), "Installed Desktop or Core missing");
-      if (receipt) {
-        const workerSHA256 = verifyWindowsVaultSidecar(join(root, "hara.exe"), receipt);
-        results.push({ kind, installerSHA256: binarySHA(artifact), expectedWorkerSHA256: receipt.expectedWorkerSHA256,
-          workerSHA256, ...await credentials(root, home) });
-        if (kind === "nsis" && mode !== "--release-only") {
-          for (const reason of ["helper_invalid", "helper_missing", "windows_desktop_required"])
-            refusals.push(await verifyCredentialRefusal(root, profile, reason, receipt));
+  const result = { schemaVersion: 1, desktopCommit: null, coreCommit: null, results: [], refusals: [] };
+  let installerKind = null, scenario = null, rpcFailure = null;
+  const onRpcFailure = diagnostic => { rpcFailure = diagnostic; };
+  const publish = value => {
+    writeFileSync(join(output, "windows-install-smoke.json"), JSON.stringify(value, null, 2) + "\n", { flag: "wx" });
+    console.log(JSON.stringify(value));
+  };
+  try {
+    // prepackage may check out a commit different from GITHUB_SHA.
+    const desktopCommit = command("git", ["rev-parse", "HEAD"]).trim();
+    check(/^[a-f0-9]{40}$/u.test(desktopCommit), "Installed smoke requires a known Desktop commit");
+    result.desktopCommit = desktopCommit;
+    const receipt = required ? readWindowsVaultBinding() : null;
+    result.coreCommit = receipt?.coreCommit ?? null;
+    const profile = mkdtempSync(join(process.env.USERPROFILE, "hara-install-smoke-"));
+    for (const kind of required ? ["nsis", "msi"] : ["nsis"]) {
+      installerKind = kind;
+      scenario = "installed";
+      const artifact = installer(resolve(releaseBase), kind);
+      const root = join(profile, `installed-${kind}`), home = join(profile, `home-${kind}`);
+      mkdirSync(home);
+      const uninstall = install(artifact, kind, root);
+      console.log(`Verifying installed ${kind} Desktop and Core`);
+      try {
+        check(existsSync(join(root, "hara-desktop.exe")) && existsSync(join(root, "hara.exe")), "Installed Desktop or Core missing");
+        if (receipt) {
+          const workerSHA256 = verifyWindowsVaultSidecar(join(root, "hara.exe"), receipt);
+          result.results.push({ kind, installerSHA256: binarySHA(artifact), expectedWorkerSHA256: receipt.expectedWorkerSHA256,
+            workerSHA256, ...await credentials(root, home, onRpcFailure) });
+          if (kind === "nsis" && mode !== "--release-only") {
+            for (const reason of ["helper_invalid", "helper_missing", "windows_desktop_required"]) {
+              scenario = reason;
+              result.refusals.push(await verifyCredentialRefusal(root, profile, reason, receipt, onRpcFailure));
+            }
+          }
+        } else {
+          const app = await start(root, home);
+          await app.stop();
+          result.results.push({ kind, workspaceStarted: true });
         }
-      } else {
-        const app = await start(root, home);
-        await app.stop();
-        results.push({ kind, workspaceStarted: true });
-      }
-    } finally { uninstall(); }
+      } finally { uninstall(); }
+    }
+  } catch (error) {
+    publish({ ...result, failure: { installerKind, scenario, rpc: rpcFailure } });
+    throw error;
   }
-  // prepackage may check out a commit different from GITHUB_SHA.
-  const desktopCommit = command("git", ["rev-parse", "HEAD"]).trim();
-  check(/^[a-f0-9]{40}$/u.test(desktopCommit), "Installed smoke requires a known Desktop commit");
-  const result = { schemaVersion: 1, desktopCommit, coreCommit: receipt?.coreCommit ?? null, results, refusals };
-  writeFileSync(join(output, "windows-install-smoke.json"), JSON.stringify(result, null, 2) + "\n");
-  console.log(JSON.stringify(result));
+  publish(result);
 }
 await main(process.argv.slice(2)).catch(error => {
   console.error(error instanceof SmokeError ? `windows-install-smoke: ${error.message}` : "windows-install-smoke: unexpected installer or fixture failure");
