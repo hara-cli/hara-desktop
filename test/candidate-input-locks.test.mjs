@@ -63,7 +63,7 @@ test('candidate versions and updater public-key identity stay bound without read
 const APPROVED_APP = { commit: '0f5eff41df9ea0299eb5c517d3e4dd154fbef534', tree: 'ecb366c910e6224f601d61be33f7208f28f52b0b', version: '1.2.0' };
 const APPROVED_CORE = { commit: 'a1921ccab59248e83afcf18289084e531f9021dc', tree: '9eda6e01e73a11cbfdb3e3d123f4c70763e4b489', version: '1.2.0' };
 // The live pin advances independently of the retired workflow's historical checkout.
-const LIVE_CORE_PIN = { commit: '35965ef6cdb546c42afc8371204afebbd4024179', tree: '748c6b678e799231b58913a3e1364d34c3108584', version: '1.3.0' };
+const LIVE_CORE_PIN = { commit: 'c85eaab3ae0cde103177bd8853994038f1168398', tree: '033b8a8809060841d5931946b8c32239d6d01b47', version: '1.3.0' };
 const JOBS = ['admission', 'credential_preflight', 'native_build', 'sign_apps', 'native_dmg', 'sign_payloads', 'native_verify'];
 const MATRIX_JOBS = ['native_build', 'native_dmg', 'native_verify'];
 const workflowText = () => read('.github/workflows/candidate.yml').toString('utf8');
