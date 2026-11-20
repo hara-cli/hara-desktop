@@ -45,8 +45,8 @@ test("prepackage copies build.yml's package matrix and differs only in the revie
     "Upload verified matrix assets for single-writer assembly",
   ]);
   const added = new Set(["Generate a throwaway updater key for this rehearsal",
-    // HARA-FB-001698: Windows Workspace startup gates run before the tag, not in the signed release.
-    "Windows real-sidecar Workspace startup (prepackage only)", "Windows post-install Workspace smoke (prepackage only)"]);
+    // HARA-FB-001698: The additional native Workspace startup test runs only in rehearsal.
+    "Windows real-sidecar Workspace startup (prepackage only)"]);
   const expected = steps(releaseBuild).filter((step) => !omitted.has(stepName(step)));
   const actual = steps(rehearsalBuild).filter((step) => !added.has(stepName(step)));
   assert.deepEqual(actual.map(stepName), expected.map(stepName), "same steps in the same order");
@@ -55,6 +55,10 @@ test("prepackage copies build.yml's package matrix and differs only in the revie
     ["Build and execute-smoke pinned hara sidecar", [
       'git -C "$CLI_DIR" fetch --quiet --depth 1 origin "refs/tags/v${CLI_VERSION}"',
       'git -C "$CLI_DIR" fetch --quiet --depth 1 origin "$CLI_SHA"',
+    ]],
+    ["Windows post-install Workspace smoke", [
+      '"$RUNNER_TEMP/windows-install-smoke" --release-only',
+      '"$RUNNER_TEMP/windows-install-smoke"',
     ]],
     ["Build local packages (no release API access)", [
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.HARA_TAURI_SIGNING_PRIVATE_KEY }}",

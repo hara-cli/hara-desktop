@@ -51,38 +51,49 @@ function checkCoreChild(record, desktop, sidecar) {
   "The discovered Core is not the installed Desktop's adjacent child");
 }
 
-async function start(root, home, previousInstance) {
-  const desktop = spawn(join(root, "hara-desktop.exe"), [], { windowsHide: true, stdio: "ignore",
-    env: { ...process.env, HOME: home, USERPROFILE: home, WEBVIEW2_USER_DATA_FOLDER: join(home, "webview") } });
+async function start(root, home, { previousInstance, direct = false } = {}) {
+  const workspaceRoot = join(home, ".hara", "workspaces-v1"), core = join(root, "hara.exe");
+  if (direct) mkdirSync(workspaceRoot, { recursive: true });
+  // Start the copied CLI with a small environment so the Desktop marker cannot be inherited.
+  const env = direct
+    ? { SystemRoot: process.env.SystemRoot, PATH: process.env.PATH, HOME: home, USERPROFILE: home,
+        HARA_WORKSPACE_HOST_HOME: home, HARA_WORKSPACE_DISCOVERY_HOME: home, HARA_WORKSPACE_LEGACY_SOURCE_HOME: home,
+        HARA_CLIENT_LOCALE: "en", HARA_UPDATE_CHECK: "0" }
+    : { ...process.env, HOME: home, USERPROFILE: home, WEBVIEW2_USER_DATA_FOLDER: join(home, "webview") };
+  const args = direct ? ["workspace", "serve", "--root", workspaceRoot, "--port", "0"] : [];
+  const child = spawn(direct ? core : join(root, "hara-desktop.exe"), args, { windowsHide: true, stdio: "ignore", env });
   let launchError = false, ownedCore = null;
-  desktop.once("error", () => { launchError = true; });
+  child.once("error", () => { launchError = true; });
   const stop = async () => {
-    const desktopRunning = () => !!desktop.pid && desktop.exitCode === null && desktop.signalCode === null;
+    const childRunning = () => !!child.pid && child.exitCode === null && child.signalCode === null;
     const coreRunning = () => {
       if (!ownedCore) return false;
       try { process.kill(ownedCore.pid, 0); return true; }
       catch (error) { if (error.code === "ESRCH") return false; throw error; }
     };
-    if (desktopRunning()) command("taskkill.exe", ["/PID", String(desktop.pid), "/T", "/F"]);
+    if (childRunning()) command("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"]);
     else if (coreRunning()) {
-      checkCoreChild(ownedCore, desktop, join(root, "hara.exe"));
+      checkCoreChild(ownedCore, child, core);
       command("taskkill.exe", ["/PID", String(ownedCore.pid), "/T", "/F"]);
     }
-    for (let i = 0; i < 50 && (desktopRunning() || coreRunning()); i++) await wait(100);
-    check(!desktopRunning() && !coreRunning(), "Installed Desktop and Core did not stop");
+    for (let i = 0; i < 50 && (childRunning() || coreRunning()); i++) await wait(100);
+    check(!childRunning() && !coreRunning(), "Smoke Workspace process tree did not stop");
   };
   const deadline = Date.now() + 180_000;
-  const discovery = join(home, ".hara", "workspaces-v1", "home", ".hara", "workspace-runtime", "serve-v2.json");
+  const discovery = join(workspaceRoot, "home", ".hara", "workspace-runtime", "serve-v2.json");
   try {
-    while (Date.now() < deadline && !launchError && desktop.exitCode === null) {
+    while (Date.now() < deadline && !launchError && child.exitCode === null && child.signalCode === null) {
       let record = null;
       try { record = JSON.parse(readFileSync(discovery, "utf8")); } catch { /* File not yet published. */ }
       if (record && record.instanceId !== previousInstance) {
         check(record.schemaVersion === 2 && record.executionMode === "workspace" && typeof record.instanceId === "string"
           && /^[a-f0-9]{64}$/u.test(record.token) && Number.isSafeInteger(record.port) && record.port > 0 && record.port < 65536,
         "Invalid Workspace discovery");
-        checkCoreChild(record, desktop, join(root, "hara.exe"));
-        ownedCore = record;
+        if (direct) check(record.pid === child.pid, "Discovery PID did not match the directly launched Core");
+        else {
+          checkCoreChild(record, child, core);
+          ownedCore = record;
+        }
         return { record, stop };
       }
       await wait(400);
@@ -94,7 +105,7 @@ async function start(root, home, previousInstance) {
   }
 }
 
-async function withWorkspace(record, action) {
+async function withWorkspace(record, action, backend = "windows-dpapi") {
   const socket = new WebSocket(`ws://${origin}:${record.port}`);
   let id = 0;
   try {
@@ -113,7 +124,7 @@ async function withWorkspace(record, action) {
       socket.addEventListener("error", failed);
       socket.addEventListener("close", failed);
     });
-    const rpc = (method, params = {}, expectVaultUnavailable = false) => new Promise((resolve, reject) => {
+    const rpc = (method, params = {}, expectedVaultError) => new Promise((resolve, reject) => {
       const requestId = ++id;
       const finish = (error, result) => {
         clearTimeout(timer);
@@ -126,8 +137,11 @@ async function withWorkspace(record, action) {
         let response;
         try { response = JSON.parse(String(event.data)); } catch { return; }
         if (response.id !== requestId) return;
-        if (expectVaultUnavailable) {
-          if (response.error?.data?.domain !== "credential-vault" || response.error.data.code !== "unavailable") return failed();
+        if (expectedVaultError) {
+          const error = response.error;
+          if (error?.data?.domain !== "credential-vault" || error.data.code !== expectedVaultError) return failed();
+          if (expectedVaultError === "unsupported" &&
+              (error.data.retry !== "none" || typeof error.message !== "string" || !error.message.includes("Hara Desktop"))) return failed();
           finish(null, true);
         } else if (response.error || !Object.hasOwn(response, "result")) failed();
         else finish(null, response.result);
@@ -141,7 +155,7 @@ async function withWorkspace(record, action) {
     });
     const init = await rpc("initialize", { token: record.token });
     check(init.capabilities?.includes("workspace.v1") && init.capabilities.includes("workspace.credential-storage.v1")
-      && init.credentialStorage?.backend === "windows-dpapi", "Installed Core did not advertise Windows DPAPI");
+      && init.credentialStorage?.backend === backend, "Core did not advertise the expected credential backend");
     const workspaceId = init.workspace?.activeWorkspaceId ?? init.workspace?.workspaces?.[0]?.workspaceId;
     check(typeof workspaceId === "string", "Installed Core has no smoke Workspace");
     return await action(rpc, () => rpc("workspace.snapshot", { workspaceId, agentId: null }));
@@ -198,7 +212,7 @@ async function credentials(root, home) {
         return row;
       });
     } finally { await first.stop(); }
-    const second = await start(root, home, first.record.instanceId);
+    const second = await start(root, home, { previousInstance: first.record.instanceId });
     try {
       return await withWorkspace(second.record, async (rpc, snapshot) => {
         const reopened = await snapshot();
@@ -222,16 +236,20 @@ async function credentials(root, home) {
   }
 }
 
-async function rejectUnboundWorker(installed, profile, reason, expectedDigest) {
+async function verifyCredentialRefusal(installed, profile, reason, binding) {
+  const direct = reason === "windows_desktop_required";
+  const code = direct ? "unsupported" : "unavailable";
   const testRoot = join(profile, reason), launcher = join(testRoot, "app"), home = join(testRoot, "home");
   mkdirSync(launcher, { recursive: true });
   mkdirSync(home);
   // Use private copies of the installed executables. The installer and installed files stay untouched.
-  for (const binary of ["hara-desktop.exe", "hara.exe", "herdr.exe"]) copyFileSync(join(installed, binary), join(launcher, binary));
+  const binaries = direct ? ["hara.exe", "hara-credential-worker.exe"] : ["hara-desktop.exe", "hara.exe", "herdr.exe"];
+  for (const binary of binaries) copyFileSync(join(installed, binary), join(launcher, binary));
+  if (direct) verifyWindowsVaultSidecar(join(launcher, "hara.exe"), binding);
   if (reason === "helper_invalid") {
     const worker = join(launcher, "hara-credential-worker.exe");
     copyFileSync(join(process.env.RUNNER_TEMP, "hara-vault-unbound-worker", "hara-credential-worker.exe"), worker);
-    check(binarySHA(worker) !== expectedDigest, "Wrong-digest worker fixture did not change bytes");
+    check(binarySHA(worker) !== binding.expectedWorkerSHA256, "Wrong-digest worker fixture did not change bytes");
     command(worker, [], { accepted: [65] }); // Valid worker executable takes the empty-stdin exit.
   }
   const localAppData = command("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
@@ -242,20 +260,21 @@ async function rejectUnboundWorker(installed, profile, reason, expectedDigest) {
   const vaultHome = join(localAppData, "Hara", "credential-vault", "v1", namespace);
   check(!existsSync(vaultHome), "Negative fixture vault namespace already exists");
 
-  const host = await start(launcher, home);
+  const host = await start(launcher, home, { direct });
   try {
     return await withWorkspace(host.record, async (rpc, snapshot) => {
       const before = await snapshot();
       await rpc("workspace.connection.add", { ...scope(before), expectedRevision: before.connections.revision,
         input: { label: "Windows negative smoke", provider: "openai", baseURL: "http://127.0.0.1:1/v1",
-          defaultModel: model, apiKey: randomBytes(24).toString("hex") } }, true);
+          defaultModel: model, apiKey: randomBytes(24).toString("hex") } }, code);
       const after = await snapshot(), status = await rpc("workspace.credentialStorage.get");
-      check(status.state === "unavailable" && status.reason === reason, "Windows credential refusal did not report the expected reason");
+      check(status.state === code && status.reason === reason && status.supported === !direct,
+        "Windows credential refusal did not report the expected status");
       check(after.connections.revision === before.connections.revision
         && after.connections.connections.length === before.connections.connections.length && !existsSync(vaultHome),
       "Refused credential operation changed the connection store or the vault");
-      return { reason, configured: false, writes: 0 };
-    });
+      return { code, reason, configured: false, writes: 0 };
+    }, direct ? "none" : "windows-dpapi");
   } finally { await host.stop(); }
 }
 
@@ -282,8 +301,8 @@ async function main([releaseBase, output, mode]) {
         results.push({ kind, installerSHA256: binarySHA(artifact), expectedWorkerSHA256: receipt.expectedWorkerSHA256,
           workerSHA256, ...await credentials(root, home) });
         if (kind === "nsis" && mode !== "--release-only") {
-          for (const reason of ["helper_invalid", "helper_missing"])
-            refusals.push(await rejectUnboundWorker(root, profile, reason, receipt.expectedWorkerSHA256));
+          for (const reason of ["helper_invalid", "helper_missing", "windows_desktop_required"])
+            refusals.push(await verifyCredentialRefusal(root, profile, reason, receipt));
         }
       } else {
         const app = await start(root, home);
