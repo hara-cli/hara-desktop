@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, realpathSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { withWorkspace } from "../scripts/windows-install-smoke.mjs";
+import { fileURLToPath } from "node:url";
+import { withWorkspace } from "../scripts/windows-install-workspace.mjs";
 
 const record = { port: 1, token: "local-fixture-token" };
 const init = { capabilities: ["workspace.v1", "workspace.credential-storage.v1"],
@@ -63,4 +68,26 @@ test("installer smoke requires the negotiated credential backend before provisio
   const calls = fixture(t, { initialize: { ...init, credentialStorage: { backend: "none" } } });
   await assert.rejects(withWorkspace(record, assert.fail), /expected credential backend/);
   assert.deepEqual(calls.map(([method]) => method), ["initialize"]);
+});
+
+test("installer smoke runs its hosted runner gate when invoked through a directory alias", t => {
+  const scratch = mkdtempSync(join(tmpdir(), "hara-install-smoke-entry-"));
+  const link = join(scratch, "scripts-link");
+  const scripts = fileURLToPath(new URL("../scripts/", import.meta.url));
+  const windows = process.platform === "win32";
+  symlinkSync(scripts, link, windows ? "junction" : "dir");
+  t.after(() => {
+    (windows ? rmdirSync : unlinkSync)(link);
+    rmdirSync(scratch);
+  });
+
+  const entry = join(link, "windows-install-smoke.mjs");
+  assert.notEqual(entry, realpathSync(entry));
+  const result = spawnSync(process.execPath, [entry], {
+    encoding: "utf8", timeout: 5000, windowsHide: true,
+    env: { ...(windows ? { SystemRoot: process.env.SystemRoot } : {}), GITHUB_ACTIONS: "false" },
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /^windows-install-smoke: GitHub-hosted Windows runner only\r?\n$/);
 });
