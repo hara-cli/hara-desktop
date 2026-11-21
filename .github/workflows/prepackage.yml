@@ -325,6 +325,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Windows post-install Workspace smoke
         if: matrix.target == 'x86_64-pc-windows-msvc'
+        timeout-minutes: 12
         shell: bash
         run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-smoke"
 
