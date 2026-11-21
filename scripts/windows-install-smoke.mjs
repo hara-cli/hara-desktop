@@ -114,7 +114,7 @@ function savedConnection(view, id) {
   return row;
 }
 
-async function credentials(root, home, onRpcFailure) {
+async function credentials(root, home, { onInitialized, onRpcFailure }) {
   const keys = [randomBytes(24).toString("hex"), randomBytes(24).toString("hex")];
   let expected = null, seen = 0, unexpected = 0;
   const server = createServer((req, res) => {
@@ -151,7 +151,7 @@ async function credentials(root, home, onRpcFailure) {
         const row = savedConnection(after);
         check(after.connections.revision > before.connections.revision, "Add did not advance connection revision");
         return { workspaceId: before.workspaceId, row };
-      }, { onRpcFailure });
+      }, { onInitialized, onRpcFailure });
     } finally { await first.stop(); }
     const second = await start(root, home, { previousInstance: first.record.instanceId });
     try {
@@ -259,7 +259,12 @@ async function main([releaseBase, output, mode]) {
         if (receipt) {
           const workerSHA256 = verifyWindowsVaultSidecar(join(root, "hara.exe"), receipt);
           result.results.push({ kind, installerSHA256: binarySHA(artifact), expectedWorkerSHA256: receipt.expectedWorkerSHA256,
-            workerSHA256, ...await credentials(root, home, onRpcFailure) });
+            workerSHA256, ...await credentials(root, home, {
+              onRpcFailure,
+              onInitialized(credentialStorage) {
+                console.log(JSON.stringify({ stage: "initialize", installerKind, credentialStorage }));
+              },
+            }) });
           if (kind === "nsis" && mode !== "--release-only") {
             for (const reason of ["helper_invalid", "helper_missing", "windows_desktop_required"]) {
               scenario = reason;

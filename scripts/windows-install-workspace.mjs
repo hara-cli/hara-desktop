@@ -27,6 +27,9 @@ const vaultReasons = new Set([
 const vaultRetries = new Set(["none", "explicit_user_only", "readback_only"]);
 const vaultStates = new Set(["not_checked", "ready", "unavailable", "unsupported"]);
 const permitted = (values, value) => value == null ? null : values.has(value) ? value : "other";
+const credentialStorageStatus = descriptor => descriptor == null ? null : {
+  state: permitted(vaultStates, descriptor.state), reason: permitted(vaultReasons, descriptor.reason),
+};
 
 class SmokeRpcError extends SmokeError {
   constructor(method, kind, error) {
@@ -40,11 +43,11 @@ class SmokeRpcError extends SmokeError {
       data: { domain, code: permitted(vaultError ? vaultCodes : publicCodes, data?.code),
         reason: vaultError ? permitted(vaultReasons, data?.reason) : null,
         retry: vaultError ? permitted(vaultRetries, data?.retry) : null },
-    } : null, credentialStorage: null };
+    } : null, initialCredentialStorage: null, credentialStorage: null };
   }
 }
 
-export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId, onRpcFailure } = {}) {
+export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId, onInitialized, onRpcFailure } = {}) {
   const socket = new WebSocket(`ws://${origin}:${record.port}`);
   let id = 0;
   try {
@@ -97,8 +100,11 @@ export async function withWorkspace(record, action, { backend = "windows-dpapi",
       socket.addEventListener("error", socketError);
       try { socket.send(JSON.stringify({ jsonrpc: "2.0", id: requestId, method, params })); } catch { failed("send_failed"); }
     });
+    let initialCredentialStorage = null;
     try {
       const init = await rpc("initialize", { token: record.token });
+      initialCredentialStorage = credentialStorageStatus(init?.credentialStorage);
+      onInitialized?.(initialCredentialStorage);
       check(init.capabilities?.includes("workspace.v1") && init.capabilities.includes("workspace.credential-storage.v1")
         && init.credentialStorage?.backend === backend, "Core did not advertise the expected credential backend");
       // A clean install has a Host and an empty catalog until a client creates a Workspace.
@@ -120,14 +126,13 @@ export async function withWorkspace(record, action, { backend = "windows-dpapi",
     } catch (error) {
       if (error instanceof SmokeRpcError) {
         const diagnostic = error.diagnostic;
+        diagnostic.initialCredentialStorage = initialCredentialStorage;
         // c85eaab puts the worker reason on its current descriptor, not on the error wire data.
         if (diagnostic.error?.data.domain === "credential-vault" &&
             diagnostic.method !== "workspace.credentialStorage.get" && socket.readyState === WebSocket.OPEN) {
           try {
             const descriptor = await rpc("workspace.credentialStorage.get", {}, undefined, 5000);
-            diagnostic.credentialStorage = {
-              state: permitted(vaultStates, descriptor?.state), reason: permitted(vaultReasons, descriptor?.reason),
-            };
+            diagnostic.credentialStorage = credentialStorageStatus(descriptor);
           } catch { /* Best-effort read only. Keep the original failure. */ }
         }
         onRpcFailure?.(diagnostic);

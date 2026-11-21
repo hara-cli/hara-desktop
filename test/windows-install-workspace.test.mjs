@@ -9,7 +9,7 @@ import { withWorkspace } from "../scripts/windows-install-workspace.mjs";
 
 const record = { port: 1, token: "local-fixture-token" };
 const init = { capabilities: ["workspace.v1", "workspace.credential-storage.v1"],
-  credentialStorage: { backend: "windows-dpapi" }, workspace: { activeWorkspaceId: null, workspaces: [] } };
+  credentialStorage: { backend: "windows-dpapi", state: "not_checked", reason: null }, workspace: { activeWorkspaceId: null, workspaces: [] } };
 const empty = { revision: 7, activeWorkspaceId: null, workspaces: [] };
 const active = { revision: 8, activeWorkspaceId: "ws_smoke", workspaces: [{ workspaceId: "ws_smoke", active: true }] };
 const snapshot = { workspaceId: "ws_smoke", resourceGeneration: "gen_fixture" };
@@ -102,7 +102,9 @@ test("installer smoke runs its hosted runner gate when invoked through a directo
 
 test("installer smoke reports only allowed RPC data and reads back the credential descriptor", async t => {
   const privateText = "private-path-or-credential";
-  const calls = fixture(t, { initialize: init, "workspace.list": active,
+  const calls = fixture(t, { initialize: { ...init,
+    credentialStorage: { ...init.credentialStorage, state: privateText, reason: privateText, home: privateText },
+  }, "workspace.list": active,
     "workspace.connection.add": () => ({ error: { code: -32602, message: privateText,
       data: { domain: "credential-vault", code: "unavailable", reason: privateText, retry: "explicit_user_only",
         params: { key: privateText }, technicalDetail: privateText } } }),
@@ -113,6 +115,7 @@ test("installer smoke reports only allowed RPC data and reads back the credentia
     { onRpcFailure: value => { diagnostic = value; } }), /Installed Core RPC failed: workspace.connection.add/);
   assert.deepEqual(diagnostic, { method: "workspace.connection.add", kind: "rpc_error",
     error: { code: -32602, data: { domain: "credential-vault", code: "unavailable", reason: "other", retry: "explicit_user_only" } },
+    initialCredentialStorage: { state: "other", reason: "other" },
     credentialStorage: { state: "unavailable", reason: "helper_invalid" } });
   assert(!JSON.stringify(diagnostic).includes(privateText));
   assert.deepEqual(calls.map(([method]) => method), ["initialize", "workspace.list", "workspace.connection.add", "workspace.credentialStorage.get"]);
@@ -126,7 +129,8 @@ test("installer smoke discards unlisted methods, codes and provider text", async
   let diagnostic;
   await assert.rejects(withWorkspace(record, rpc => rpc(unknown), { onRpcFailure: value => { diagnostic = value; } }), /RPC failed: unknown/);
   assert.deepEqual(diagnostic, { method: null, kind: "rpc_error",
-    error: { code: null, data: { domain: "other", code: "other", reason: null, retry: null } }, credentialStorage: null });
+    error: { code: null, data: { domain: "other", code: "other", reason: null, retry: null } },
+    initialCredentialStorage: { state: "not_checked", reason: null }, credentialStorage: null });
   assert.equal(calls.length, 3);
 });
 
@@ -135,7 +139,8 @@ test("installer smoke distinguishes WebSocket closure from an RPC error", async 
   let diagnostic;
   await assert.rejects(withWorkspace(record, rpc => rpc("workspace.connection.add"),
     { onRpcFailure: value => { diagnostic = value; } }), /socket_closed/);
-  assert.deepEqual(diagnostic, { method: "workspace.connection.add", kind: "socket_closed", error: null, credentialStorage: null });
+  assert.deepEqual(diagnostic, { method: "workspace.connection.add", kind: "socket_closed", error: null,
+    initialCredentialStorage: { state: "not_checked", reason: null }, credentialStorage: null });
   assert.deepEqual(calls.map(([method]) => method), ["initialize", "workspace.list", "workspace.connection.add"]);
 });
 
@@ -144,4 +149,43 @@ test("installer smoke preserves an expected credential refusal without publishin
     "workspace.connection.add": () => ({ error: { code: -32602, data: { domain: "credential-vault", code: "unavailable" } } }),
   });
   assert.equal(await withWorkspace(record, rpc => rpc("workspace.connection.add", {}, "unavailable"), { onRpcFailure: assert.fail }), true);
+});
+
+const hostBindingUnavailable = { state: "unavailable", reason: "host_binding_unavailable" };
+for (const [description, initial] of [
+  ["an already unavailable Host binding", hostBindingUnavailable],
+  ["a binding failure first observed after add", { state: "not_checked", reason: null }],
+]) {
+  test("installer smoke distinguishes " + description, async t => {
+    const calls = fixture(t, { initialize: { ...init, credentialStorage: { ...init.credentialStorage, ...initial } },
+      "workspace.list": active,
+      "workspace.connection.add": () => ({ error: {
+        code: -32602, data: { domain: "credential-vault", code: "unavailable", retry: "explicit_user_only" },
+      } }),
+      "workspace.credentialStorage.get": hostBindingUnavailable,
+    });
+    let diagnostic, observedAtInitialize;
+    await assert.rejects(withWorkspace(record, rpc => rpc("workspace.connection.add"), {
+      onInitialized(value) {
+        assert.deepEqual(calls.map(([method]) => method), ["initialize"]);
+        observedAtInitialize = value;
+      },
+      onRpcFailure: value => { diagnostic = value; },
+    }), /workspace.connection.add/);
+    assert.deepEqual(observedAtInitialize, initial);
+    assert.deepEqual(diagnostic.initialCredentialStorage, initial);
+    assert.deepEqual(diagnostic.credentialStorage, hostBindingUnavailable);
+    assert.deepEqual(calls.map(([method]) => method),
+      ["initialize", "workspace.list", "workspace.connection.add", "workspace.credentialStorage.get"]);
+  });
+}
+
+test("installer smoke has no initial credential state when initialize fails", async t => {
+  const calls = fixture(t, { initialize: () => ({ error: { code: -32001 } }) });
+  let diagnostic;
+  await assert.rejects(withWorkspace(record, assert.fail, { onRpcFailure: value => { diagnostic = value; } }),
+    /RPC failed: initialize/);
+  assert.equal(diagnostic.initialCredentialStorage, null);
+  assert.equal(diagnostic.credentialStorage, null);
+  assert.deepEqual(calls.map(([method]) => method), ["initialize"]);
 });
