@@ -12,13 +12,15 @@ const phases = new Set([...commandLimits.keys(), "smoke", "desktop.start", "core
   "vault.save", "vault.restart", "vault.rotate", "http.listen", "http.close", "nsis.removal_check",
   "refusal.helper_invalid", "refusal.helper_missing", "refusal.windows_desktop_required"]);
 const notices = new Set(["smoke", "msi.precheck", "msi.install", "msi.uninstall", "msi.removal_check", "nsis.migration_check", "nsis.install", "nsis.uninstall"]);
+const outcomes = new Set(["ok", "failed", "timeout", "spawn_failed", "nonzero", "exit_unconfirmed", "output_limit"]);
 const exitGrace = 3_000;
 const capturedLimit = 64 * 1024;
 
 export class SmokeProcessError extends SmokeError {
   constructor(outcome, exitCode = null) {
-    super(outcome);
-    this.outcome = outcome;
+    const safeOutcome = outcomes.has(outcome) ? outcome : "failed";
+    super(safeOutcome);
+    this.outcome = safeOutcome;
     this.exitCode = Number.isSafeInteger(exitCode) ? exitCode : null;
   }
 }
@@ -32,13 +34,14 @@ export function smokeRuntime({ progressFile, now = () => performance.now(), spaw
     Math.max(0, Math.floor(Math.min(cleanup ? cleanupEnds : workEnds, until) - now()));
 
   function mark(kind, stage, event, started, outcome = null, exitCode = null) {
-    const row = { version: 1, sequence: ++sequence, kind, stage, event, outcome,
-      elapsedMs: Math.max(0, Math.round(now() - started)), exitCode };
+    const row = { version: 1, sequence: ++sequence, kind, stage, event,
+      outcome: outcome === null || outcomes.has(outcome) ? outcome : "failed",
+      elapsedMs: Math.max(0, Math.round(now() - started)), exitCode: Number.isSafeInteger(exitCode) ? exitCode : null };
     const line = JSON.stringify(row) + "\n";
     write(line);
     if (progressFile) appendFileSync(progressFile, line, { mode: 0o600 });
-    if (notices.has(stage) && (event === "begin" || outcome !== "ok")) {
-      write(`::notice title=Windows install smoke::${row.sequence} ${kind} ${stage} ${event} ${outcome ?? "pending"}\n`);
+    if (notices.has(stage) && (event === "begin" || row.outcome !== "ok")) {
+      write(`::notice title=Windows install smoke::${row.sequence} ${kind} ${stage} ${event} ${row.outcome ?? "pending"}\n`);
     }
   }
 

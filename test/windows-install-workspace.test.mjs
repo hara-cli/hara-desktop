@@ -367,3 +367,10 @@ for (const remains of [false, true]) {
     ]);
   });
 }
+
+test("installer stops after MSI reports that it initiated a reboot", async () => {
+  const { observation, steps, run } = msiFixture([absentMsi], { installCode: 1641 });
+  await assert.rejects(run(), /msi_install_failed/);
+  assert.equal(observation.installExitCode, 1641);
+  assert.deepEqual(steps, ["read", "/i"]);
+});
