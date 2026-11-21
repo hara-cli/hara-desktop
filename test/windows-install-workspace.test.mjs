@@ -233,6 +233,27 @@ function msiFixture(states, { installCode = 0, uninstallCode = 0, files = presen
   return { steps, observation, run };
 }
 
+test("MSI install and uninstall explicitly suppress reboots with the same quiet settings", async () => {
+  const calls = [], states = [absentMsi, installedMsi, absentMsi];
+  const runtime = {
+    canInstallOrRemove: () => true,
+    command(kind, stage, executable, args, options) {
+      calls.push({ kind, stage, executable, args, options });
+      return { exitCode: 0 };
+    },
+  };
+  await withMsiInstallation("fixture.msi", requestedMsiRoot, {}, () => {}, {
+    runtime, readRegistration: () => states.shift(), binaries: () => presentFiles,
+  });
+  const quiet = ["fixture.msi", "/qn", "/norestart", "REBOOT=ReallySuppress"];
+  assert.deepEqual(calls, [
+    { kind: "msi", stage: "msi.install", executable: "msiexec.exe", args: ["/i", ...quiet, "INSTALLDIR=" + requestedMsiRoot],
+      options: { cleanup: false, accepted: [0, 3010] } },
+    { kind: "msi", stage: "msi.uninstall", executable: "msiexec.exe", args: ["/x", ...quiet],
+      options: { cleanup: true, accepted: [0, 3010] } },
+  ]);
+});
+
 test("installer smoke verifies MSI registration and directory before credentials and confirms removal before NSIS", async () => {
   const { steps, observation, run } = msiFixture([absentMsi, installedMsi, absentMsi]);
   await run();

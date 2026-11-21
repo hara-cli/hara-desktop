@@ -93,7 +93,7 @@ export async function assertNoLegacyMsi(artifact, runtime, read = readMsiRegistr
 
 async function runMsi(action, artifact, root, runtime) {
   const install = action === "/i";
-  const args = [action, artifact, "/qn", "/norestart"];
+  const args = [action, artifact, "/qn", "/norestart", "REBOOT=ReallySuppress"];
   if (install) args.push(`INSTALLDIR=${root}`);
   try {
     return (await runtime.command("msi", install ? "msi.install" : "msi.uninstall", "msiexec.exe", args,
