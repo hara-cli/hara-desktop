@@ -408,6 +408,9 @@ jobs:
           }
           npm ci
           npm run build
+          if [ "${{ matrix.target }}" = "x86_64-pc-windows-msvc" ]; then
+            node "$GITHUB_WORKSPACE/scripts/windows-vault-bundle.mjs" prepare "$CLI_SHA"
+          fi
           case "${{ matrix.target }}" in
             aarch64-apple-darwin)      BUN_TARGET=bun-darwin-arm64 ;;
             x86_64-apple-darwin)       BUN_TARGET=bun-darwin-x64-baseline ;;
@@ -454,6 +457,9 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/src-tauri/binaries"
           cp "dist/bin/hara-sidecar${EXT}" \
             "$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}${EXT}"
+          if [ "${{ matrix.target }}" = "x86_64-pc-windows-msvc" ]; then
+            node "$GITHUB_WORKSPACE/scripts/windows-vault-bundle.mjs" stage "$CLI_SHA"
+          fi
           # Tauri resolves every externalBin before compilation. Hydrate the checksum-pinned Herdr
           # runtime for this exact matrix target beside hara, rather than relying on a developer
           # workstation artifact that is intentionally absent from the release checkout.
@@ -470,6 +476,8 @@ jobs:
           if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
             # linuxdeploy is unreliable for this large sidecar; updater-supported deb+rpm ship.
             npm run tauri build -- --target "${{ matrix.target }}" --bundles deb,rpm
+          elif [ "${{ matrix.target }}" = "x86_64-pc-windows-msvc" ]; then
+            node scripts/windows-vault-bundle.mjs build "${{ matrix.target }}"
           else
             npm run tauri build -- --target "${{ matrix.target }}"
           fi
@@ -478,6 +486,11 @@ jobs:
         env:
           TAURI_TARGET: ${{ matrix.target }}
         run: node scripts/package-smoke.mjs
+      - name: Windows post-install Workspace smoke
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        timeout-minutes: 12
+        shell: bash
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-smoke" --release-only
       - name: Collect canonical release assets after smoke
         shell: bash
         run: >-

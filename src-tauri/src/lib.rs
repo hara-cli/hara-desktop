@@ -15,7 +15,9 @@ mod system_visual_preferences;
 mod workspace_media;
 mod update_channel;
 mod dev_updater;
-#[cfg(test)]
+// Tauri's mock app links Windows Common Controls v6 imports, but the
+// Windows lib test harness lacks the packaged application's manifest.
+#[cfg(all(test, not(windows)))]
 mod dev_updater_tests;
 #[cfg(windows)]
 mod windows_process;
@@ -1591,6 +1593,10 @@ fn connect_or_start_workspace(client_locale: Option<String>) -> Result<Workspace
     let search_path = std::env::var_os("PATH"); let system_root = std::env::var_os("SystemRoot");
     command.env_clear().env("HOME", root.join("home")).env("USERPROFILE", root.join("home"))
         .env("HARA_UPDATE_CHECK", "0").env("NO_COLOR", "1");
+    // Release builds select the adjacent bundled executable above. Core uses this
+    // launch convention to distinguish the Desktop sidecar from the copied CLI.
+    #[cfg(all(windows, not(debug_assertions)))]
+    command.env("HARA_WORKSPACE_LAUNCH_SOURCE", "desktop-windows-v1");
     // Writes remain in the selected stable data Home; the separate sources are read-only and are
     // never renderer parameters. A debug fixture can supply a sanitized legacy-copy Home.
     command.env("HARA_CLIENT_LOCALE", locale);

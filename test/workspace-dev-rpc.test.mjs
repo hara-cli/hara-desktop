@@ -166,3 +166,40 @@ test("older Core capability keeps method field compatibility after locale-aware 
   const {client,socket} = await setup(); const pending = client.request("workspace.list", {});
   assert.equal(Object.prototype.hasOwnProperty.call(socket.sent.at(-1).params,"clientLocale"),false);socket.reply(socket.sent.at(-1).id,{});await pending;client.close();
 });
+
+test("only authenticated credential add/edit use a 35-second deadline; never resend a mutation", async t => {
+  const capability = "workspace.credential-storage.v1";
+  for (const advertised of [false, true]) {
+    const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "workspace" }, () => {});
+    const socket = Socket.instances.at(-1);
+    const ready = client.initialize(info().token);
+    socket.open();
+    await tick();
+    socket.reply(socket.sent[0].id, {
+      capabilities: advertised ? ["workspace.v1", capability] : ["workspace.v1"],
+      syntheticOnly: false, executionMode: "workspace",
+    });
+    await ready;
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      for (const method of ["workspace.connection.add", "workspace.connection.edit", "workspace.connection.cleanup", "workspace.snapshot"]) {
+        let expired = false;
+        const result = client.request(method, {});
+        const expected = assert.rejects(result, error => {
+          expired = true;
+          return error instanceof WorkspaceRpcWaitError && error.method === method;
+        });
+        const longWait = advertised && (method.endsWith(".add") || method.endsWith(".edit"));
+        t.mock.timers.tick((longWait ? 35000 : 15000) - 1);
+        await tick();
+        assert.equal(expired, false);
+        t.mock.timers.tick(1);
+        await expected;
+        assert.equal(socket.sent.filter(entry => entry.method === method).length, 1);
+      }
+    } finally {
+      t.mock.timers.reset();
+      client.close();
+    }
+  }
+});

@@ -31,13 +31,14 @@ const require=createRequire(import.meta.url),root=fileURLToPath(new URL("../",im
 const output=buildSync({stdin:{contents:'export {WorkspaceConnectionForm} from "./src/WorkspaceRuntimeSettings.tsx"; export {WorkspaceConnections} from "./src/WorkspaceSettingsPanels.tsx"; export {WorkspaceSoftwareUpdate} from "./src/WorkspaceSoftwareUpdate.tsx";',resolveDir:root,loader:"tsx"},bundle:true,platform:"node",format:"cjs",jsx:"automatic",external:["react"],loader:{".css":"empty",".svg":"dataurl"},write:false});
 const module={exports:{}};new Function("require","module","exports",output.outputFiles[0].text)(require,module,module.exports);
 const esc=value=>value.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#x27;");
-for(const locale of ["en","zh-Hans","zh-Hant"])test(`actual form default stays unchanged; Settings override and page copy are neutral (${locale})`,()=>{
+for(const locale of ["en","zh-Hans","zh-Hant"])test(`shared connection form and Settings copy are neutral on Windows (${locale})`,()=>{
  const storage=Object.getOwnPropertyDescriptor(globalThis,"localStorage"),nav=Object.getOwnPropertyDescriptor(globalThis,"navigator");
  Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:key=>key==="hara.locale"?locale:null}});Object.defineProperty(globalThis,"navigator",{configurable:true,value:{platform:"Win32"}});
  try{
   const raw=makeT(locale),t=settingsTranslator(raw,"windows"),model={legacyConnections:async()=>[]};
   const props={model,firstKey:true};const original=renderToStaticMarkup(createElement(module.exports.WorkspaceConnectionForm,props));
-  assert.ok(original.includes(esc(raw("ws.connections.keyNoteFirst"))),"onboarding's shared-form default copy is intact");
+  assert.ok(original.includes(esc(raw("ws.connections.keyNoteShort"))));
+  assert.doesNotMatch(original,/Keychain|macOS|钥匙串|鑰匙圈/i);
   const settings=renderToStaticMarkup(createElement(module.exports.WorkspaceConnectionForm,{...props,keyNote:t("ws.connections.keyNoteFirst")}));
   assert.ok(settings.includes(esc(t("ws.connections.keyNoteFirst"))));assert.ok(!settings.includes(esc(raw("ws.connections.keyNoteFirst"))));
   const workspace={workspaceId:"A",resourceGeneration:"g",label:"Synthetic",connections:{revision:1,defaultConnectionId:"c1",connections:[{id:"c1",label:"Fixture",status:"active",defaultModel:"m",keySaved:true,keyState:"saved"}]}};

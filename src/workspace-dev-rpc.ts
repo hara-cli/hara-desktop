@@ -86,7 +86,9 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
     if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new WorkspaceViewError("ws.rpc.notConnected"));
     return new Promise<T>((resolve, reject) => {
       const id = ++this.serial;
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new WorkspaceRpcWaitError(method)); }, 15000);
+      const credentialMutation = (method === "workspace.connection.add" || method === "workspace.connection.edit")
+        && this.capabilities.has("workspace.credential-storage.v1");
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new WorkspaceRpcWaitError(method)); }, credentialMutation ? 35000 : 15000);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
       const timing = this.timingNow();
       const payload = timing && ["workspace.session.send", "workspace.session.resume", "workspace.session.answer"].includes(method) ? { ...params, timing } : params;

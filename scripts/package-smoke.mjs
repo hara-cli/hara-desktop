@@ -5,7 +5,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { nativeTarget, smokeSidecar } from "./sidecar-smoke.mjs";
 import { smokeMacDmg } from "./mac-dmg-smoke.mjs";
@@ -14,6 +14,7 @@ import { smokeUpdaterEndpoints } from "./updater-endpoint-smoke.mjs";
 import { verifyUpdaterArtifactSignature } from "./updater-signature.mjs";
 import { inspectForeignMacExecutable, useForeignMacStaticValidation } from "./foreign-mac-validation.mjs";
 import { assertNoOptionalRuntimeFiles, assertPiOnlyConfiguration } from "./check-runtime-distribution.mjs";
+import { readWindowsVaultBinding, verifyWindowsVaultSidecar, windowsVaultRequired } from "./windows-vault-bundle.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const triple = process.env.TAURI_TARGET || "";
@@ -27,6 +28,7 @@ assertPiOnlyConfiguration(JSON.parse(readFileSync(join(root, "src-tauri/tauri.co
 const stampPath = join(root, "src-tauri", "binaries", "SIDECAR_VERSION");
 const sidecarVersion = existsSync(stampPath) ? readFileSync(stampPath, "utf8").trim() : "";
 const platform = process.platform;
+const windowsVault = platform === "win32" && windowsVaultRequired(root) ? readWindowsVaultBinding(root) : null;
 const staticForeignMacValidation = useForeignMacStaticValidation({ expectedTarget });
 let failures = 0;
 const EXTRACTION_BUFFER_BYTES = 512 * 1024 * 1024;
@@ -235,6 +237,14 @@ function smokeInstalledSidecars(artifact, kind, label, wantedName, desktopName) 
     onlyPiInventory(extractionRoot);
 
     const desktopCandidates = findFilesNamed(extractionRoot, desktopName);
+    if (windowsVault) {
+      const workers = findFilesNamed(extractionRoot, "hara-credential-worker.exe");
+      if (candidates.length !== 1 || desktopCandidates.length !== 1 || workers.length !== 1
+          || dirname(candidates[0]) !== dirname(desktopCandidates[0]) || dirname(candidates[0]) !== dirname(workers[0]))
+        throw new Error("Expected exactly one co-installed Desktop, Core, and credential worker");
+      const extractedSHA256 = verifyWindowsVaultSidecar(candidates[0], windowsVault);
+      ok(`${label} extracted credential worker SHA-256 ${extractedSHA256} equals the Core build digest ${windowsVault.expectedWorkerSHA256}`);
+    }
     if (desktopCandidates.length === 0) {
       fail(`${label} does not contain ${desktopName}: ${basename(artifact)}`);
     } else {
