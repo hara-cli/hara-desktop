@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { classifyMsiDirectory, withMsiInstallation } from "../scripts/windows-install-layout.mjs";
 import { withWorkspace } from "../scripts/windows-install-workspace.mjs";
 
 const record = { port: 1, token: "local-fixture-token" };
@@ -188,4 +189,113 @@ test("installer smoke has no initial credential state when initialize fails", as
   assert.equal(diagnostic.initialCredentialStorage, null);
   assert.equal(diagnostic.credentialStorage, null);
   assert.deepEqual(calls.map(([method]) => method), ["initialize"]);
+});
+
+const requestedMsiRoot = "C:\\private fixture\\installed-msi";
+const installedMsi = { productState: 5, defaultPresent: false, installDirPresent: true, installDir: requestedMsiRoot };
+const absentMsi = { productState: -1, defaultPresent: false, installDirPresent: false, installDir: null };
+const presentFiles = { desktopPresent: true, corePresent: true, workerPresent: true };
+
+for (const [description, directory, expected] of [
+  ["normalizes a trailing backslash", requestedMsiRoot + "\\", "requested"],
+  ["compares case-insensitively", requestedMsiRoot.toUpperCase(), "requested"],
+  ["identifies the old NSIS directory", "C:\\private fixture\\installed-nsis", "previous_nsis"],
+  ["classifies any other private directory without exposing it", "D:\\private unexpected path", "other"],
+  ["identifies the default Program Files directory", "C:\\Program Files\\Hara\\", "default_program_files"],
+  ["treats a missing or non-absolute path as unknown", "\\installed-msi", "unknown"],
+]) {
+  test("installer smoke " + description, () => {
+    assert.equal(classifyMsiDirectory(directory, requestedMsiRoot, "C:\\Program Files"), expected);
+  });
+}
+
+function msiFixture(states, { installCode = 0, uninstallCode = 0, files = presentFiles } = {}) {
+  const steps = [], observation = {};
+  const run = () => withMsiInstallation("test.msi", requestedMsiRoot, observation, async () => steps.push("credentials"), {
+    readRegistration(artifact) {
+      assert.equal(artifact, "test.msi");
+      steps.push("read");
+      return states.shift();
+    },
+    invoke(action, artifact, root) {
+      assert.equal(artifact, "test.msi");
+      assert.equal(root, requestedMsiRoot);
+      steps.push(action);
+      return action === "/i" ? installCode : uninstallCode;
+    },
+    binaries(root) {
+      assert.equal(root, requestedMsiRoot);
+      steps.push("binaries");
+      return files;
+    },
+  });
+  return { steps, observation, run };
+}
+
+test("installer smoke verifies MSI registration and directory before credentials and confirms removal before NSIS", async () => {
+  const { steps, observation, run } = msiFixture([absentMsi, installedMsi, absentMsi]);
+  await run();
+  assert.deepEqual(steps, ["read", "/i", "binaries", "read", "credentials", "/x", "read"]);
+  assert.deepEqual(observation, { ...presentFiles, registrationClearBefore: true, installExitCode: 0, directory: "requested",
+    uninstallExitCode: 0, registrationClearAfter: true, reason: null, cleanupReason: null });
+});
+
+test("installer smoke rejects a preexisting default value, named value or product before invoking MSI", async () => {
+  for (const activeRegistration of [{ defaultPresent: true }, { installDirPresent: true }, { productState: 2 }]) {
+    const { steps, observation, run } = msiFixture([{ ...absentMsi, ...activeRegistration }]);
+    await assert.rejects(run(), /msi_preexisting_registration/);
+    assert.deepEqual(steps, ["read"]);
+    assert.equal(observation.registrationClearBefore, false);
+  }
+});
+
+test("installer smoke keeps unreadable registry observations distinct from an empty registry", async () => {
+  const { steps, observation, run } = msiFixture([null]);
+  await assert.rejects(run(), /msi_registration_unavailable/);
+  assert.deepEqual(steps, ["read"]);
+  assert.equal(observation.registrationClearBefore, null);
+});
+
+test("installer smoke rejects an MSI redirected to NSIS and reports each missing file separately", async () => {
+  const files = { desktopPresent: false, corePresent: true, workerPresent: false };
+  const { steps, observation, run } = msiFixture([
+    absentMsi, { ...installedMsi, installDir: "C:\\PRIVATE FIXTURE\\installed-nsis\\" }, absentMsi,
+  ], { files });
+  await assert.rejects(run(), /msi_install_dir_redirected/);
+  assert.deepEqual(steps, ["read", "/i", "binaries", "read", "/x", "read"]);
+  for (const name of Object.keys(files)) assert.equal(observation[name], files[name]);
+  assert.equal(observation.directory, "previous_nsis");
+  assert.equal(observation.registrationClearAfter, true);
+  assert.doesNotMatch(JSON.stringify(observation), /private fixture|test\.msi/iu);
+});
+
+test("installer smoke refuses MSI with a missing named InstallDir", async () => {
+  const { steps, observation, run } = msiFixture([
+    absentMsi, { ...installedMsi, installDirPresent: false, installDir: null }, absentMsi,
+  ]);
+  await assert.rejects(run(), /msi_install_dir_redirected/);
+  assert(!steps.includes("credentials"));
+  assert.equal(observation.directory, "unknown");
+});
+
+test("installer smoke refuses to continue to NSIS when the MSI product or directory registration remains", async () => {
+  for (const residue of [{ productState: 5 }, { installDirPresent: true }]) {
+    const { observation, run } = msiFixture([absentMsi, installedMsi, { ...absentMsi, ...residue }]);
+    await assert.rejects(run(), /msi_residue_before_nsis/);
+    assert.equal(observation.registrationClearAfter, false);
+    assert.equal(observation.cleanupReason, "msi_residue_before_nsis");
+  }
+});
+
+test("installer smoke keeps the MSI reboot exit code and refuses to sign off", async () => {
+  const pendingInstall = msiFixture([absentMsi, absentMsi], { installCode: 3010 });
+  await assert.rejects(pendingInstall.run(), /msi_reboot_required/);
+  assert(!pendingInstall.steps.includes("credentials"));
+  assert.equal(pendingInstall.observation.installExitCode, 3010);
+  assert.equal(pendingInstall.observation.registrationClearAfter, true);
+
+  const pendingRemoval = msiFixture([absentMsi, installedMsi], { uninstallCode: 3010 });
+  await assert.rejects(pendingRemoval.run(), /msi_reboot_required/);
+  assert.equal(pendingRemoval.observation.uninstallExitCode, 3010);
+  assert.equal(pendingRemoval.observation.registrationClearAfter, null);
 });

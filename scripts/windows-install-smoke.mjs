@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { binarySHA, readWindowsVaultBinding, verifyWindowsVaultSidecar, windowsVaultRequired } from "./windows-vault-bundle.mjs";
+import { installedBinaries, withMsiInstallation } from "./windows-install-layout.mjs";
 import { SmokeError, check, origin, withWorkspace } from "./windows-install-workspace.mjs";
 
 const model = "hara-vault-smoke-model";
@@ -25,12 +26,8 @@ function installer(release, kind) {
   return join(dir, files[0]);
 }
 
-function install(artifact, kind, dest) {
+function installNsis(artifact, dest) {
   check(!existsSync(dest), "Refusing to install into an existing location");
-  if (kind === "msi") {
-    command("msiexec.exe", ["/i", artifact, "/qn", "/norestart", `INSTALLDIR=${dest}`], { accepted: [0, 3010] });
-    return () => command("msiexec.exe", ["/x", artifact, "/qn", "/norestart"], { accepted: [0, 3010] });
-  }
   // NSIS requires the /D argument to be last and its path unquoted, including any spaces.
   command(artifact, ["/S", `/D=${dest}`], { windowsVerbatimArguments: true });
   return () => {
@@ -227,7 +224,7 @@ async function main([releaseBase, output, mode]) {
   const receiptPath = join(output, "windows-install-smoke.json");
   // One smoke invocation owns this runner output. Clear any old receipt before publishing.
   rmSync(receiptPath, { force: true });
-  const result = { schemaVersion: 1, desktopCommit: null, coreCommit: null, results: [], refusals: [] };
+  const result = { schemaVersion: 1, desktopCommit: null, coreCommit: null, results: [], refusals: [], installationChecks: [] };
   let installerKind = null, scenario = null, rpcFailure = null;
   const onRpcFailure = diagnostic => { rpcFailure = diagnostic; };
   const publish = value => {
@@ -246,16 +243,17 @@ async function main([releaseBase, output, mode]) {
     const receipt = required ? readWindowsVaultBinding() : null;
     result.coreCommit = receipt?.coreCommit ?? null;
     const profile = mkdtempSync(join(process.env.USERPROFILE, "hara-install-smoke-"));
-    for (const kind of required ? ["nsis", "msi"] : ["nsis"]) {
+    for (const kind of required ? ["msi", "nsis"] : ["nsis"]) {
       installerKind = kind;
       scenario = "installed";
       const artifact = installer(resolve(releaseBase), kind);
       const root = join(profile, `installed-${kind}`), home = join(profile, `home-${kind}`);
       mkdirSync(home);
-      const uninstall = install(artifact, kind, root);
-      console.log(`Verifying installed ${kind} Desktop and Core`);
-      try {
-        check(existsSync(join(root, "hara-desktop.exe")) && existsSync(join(root, "hara.exe")), "Installed Desktop or Core missing");
+      const installation = { kind, desktopPresent: null, corePresent: null, workerPresent: null };
+      result.installationChecks.push(installation);
+      const exercise = async () => {
+        console.log(`Verifying installed ${kind} Desktop and Core`);
+        check(installation.desktopPresent && installation.corePresent, "Installed Desktop or Core missing");
         if (receipt) {
           const workerSHA256 = verifyWindowsVaultSidecar(join(root, "hara.exe"), receipt);
           result.results.push({ kind, installerSHA256: binarySHA(artifact), expectedWorkerSHA256: receipt.expectedWorkerSHA256,
@@ -276,7 +274,17 @@ async function main([releaseBase, output, mode]) {
           await app.stop();
           result.results.push({ kind, workspaceStarted: true });
         }
-      } finally { uninstall(); }
+      };
+
+      if (kind === "msi") {
+        await withMsiInstallation(artifact, root, installation, exercise);
+      } else {
+        const uninstall = installNsis(artifact, root);
+        try {
+          Object.assign(installation, installedBinaries(root));
+          await exercise();
+        } finally { uninstall(); }
+      }
     }
   } catch (error) {
     publish({ ...result, failure: { installerKind, scenario, rpc: rpcFailure } });
