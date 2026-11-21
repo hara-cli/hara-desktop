@@ -46,8 +46,29 @@ test("prepackage copies build.yml's package matrix and differs only in the revie
   ]);
   const added = new Set(["Generate a throwaway updater key for this rehearsal",
     // HARA-FB-001698: The additional native Workspace startup test runs only in rehearsal.
-    "Windows real-sidecar Workspace startup (prepackage only)"]);
-  const expected = steps(releaseBuild).filter((step) => !omitted.has(stepName(step)));
+    "Windows real-sidecar Workspace startup (prepackage only)",
+    "Windows MSI registry preflight (prepackage only)"]);
+  const originalSmokeName = "Windows post-install Workspace smoke";
+  const originalSmoke = steps(releaseBuild).filter((step) => stepName(step) === originalSmokeName);
+  assert.deepEqual(originalSmoke, [`      - name: Windows post-install Workspace smoke
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        timeout-minutes: 12
+        shell: bash
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/\${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-smoke" --release-only
+`]);
+  const splitSmoke = steps("    steps:\n" + `      - name: Windows MSI post-install Workspace smoke and uninstall readback
+        if: matrix.installer_smoke == '--msi-only'
+        timeout-minutes: 12
+        shell: bash
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/\${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-msi-smoke" --msi-only
+      - name: Windows NSIS post-install Workspace smoke
+        if: matrix.installer_smoke == '--nsis-only'
+        timeout-minutes: 12
+        shell: bash
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/\${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-nsis-smoke" --nsis-only
+`);
+  const expected = steps(releaseBuild).filter((step) => !omitted.has(stepName(step)))
+    .flatMap((step) => stepName(step) === originalSmokeName ? splitSmoke : [step]);
   const actual = steps(rehearsalBuild).filter((step) => !added.has(stepName(step)));
   assert.deepEqual(actual.map(stepName), expected.map(stepName), "same steps in the same order");
 
@@ -55,10 +76,6 @@ test("prepackage copies build.yml's package matrix and differs only in the revie
     ["Build and execute-smoke pinned hara sidecar", [
       'git -C "$CLI_DIR" fetch --quiet --depth 1 origin "refs/tags/v${CLI_VERSION}"',
       'git -C "$CLI_DIR" fetch --quiet --depth 1 origin "$CLI_SHA"',
-    ]],
-    ["Windows post-install Workspace smoke", [
-      '"$RUNNER_TEMP/windows-install-smoke" --release-only',
-      '"$RUNNER_TEMP/windows-install-smoke"',
     ]],
     ["Build local packages (no release API access)", [
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.HARA_TAURI_SIGNING_PRIVATE_KEY }}",
@@ -80,8 +97,30 @@ test("prepackage copies build.yml's package matrix and differs only in the revie
   assert.equal(names.indexOf("Generate a throwaway updater key for this rehearsal") + 1,
     names.indexOf("Build local packages (no release API access)"));
 
+  const preflight = steps(rehearsalBuild).filter((step) => stepName(step) === "Windows MSI registry preflight (prepackage only)");
+  assert.deepEqual(preflight, [`      - name: Windows MSI registry preflight (prepackage only)
+        if: matrix.installer_smoke == '--msi-only'
+        timeout-minutes: 2
+        shell: bash
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/\${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-msi-preflight" --msi-precheck-only
+`]);
+  assert.equal(names.indexOf("Windows MSI registry preflight (prepackage only)") + 1,
+    names.indexOf("Windows MSI post-install Workspace smoke and uninstall readback"));
+
   const matrix = (block) => block.slice(block.indexOf("    strategy:\n"), block.indexOf("    steps:\n"));
-  assert.equal(matrix(rehearsalBuild), matrix(releaseBuild), "same platforms, targets and timeout");
+  const windows = `          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+`;
+  const rehearsalWindows = `          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            installer_smoke: --msi-only
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            installer_smoke: --nsis-only
+`;
+  assert.equal(matrix(releaseBuild).split(windows).length, 2);
+  assert.equal(matrix(rehearsalBuild), matrix(releaseBuild).replace(windows, rehearsalWindows),
+    "only the Windows rehearsal matrix splits into independent MSI and NSIS legs");
   for (const name of ["Validate tag and release metadata",
     "Install locked prepare-release Desktop dependencies with bounded registry retries",
     "Run release-pipeline regression tests"]) {
