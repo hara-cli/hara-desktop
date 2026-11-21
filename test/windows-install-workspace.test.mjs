@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { classifyMsiDirectory, withMsiInstallation } from "../scripts/windows-install-layout.mjs";
+import { assertNoLegacyMsi, classifyMsiDirectory, installNsis, withMsiInstallation } from "../scripts/windows-install-layout.mjs";
 import { withWorkspace } from "../scripts/windows-install-workspace.mjs";
 
 const record = { port: 1, token: "local-fixture-token" };
@@ -209,9 +209,10 @@ for (const [description, directory, expected] of [
   });
 }
 
-function msiFixture(states, { installCode = 0, uninstallCode = 0, files = presentFiles } = {}) {
+function msiFixture(states, { installCode = 0, uninstallCode = 0, files = presentFiles, runtime } = {}) {
   const steps = [], observation = {};
   const run = () => withMsiInstallation("test.msi", requestedMsiRoot, observation, async () => steps.push("credentials"), {
+    runtime,
     readRegistration(artifact) {
       assert.equal(artifact, "test.msi");
       steps.push("read");
@@ -299,3 +300,70 @@ test("installer smoke keeps the MSI reboot exit code and refuses to sign off", a
   assert.equal(pendingRemoval.observation.uninstallExitCode, 3010);
   assert.equal(pendingRemoval.observation.registrationClearAfter, null);
 });
+
+test("installer skips MSI cleanup when child exit is unconfirmed", async () => {
+  const { observation, steps, run } = msiFixture([absentMsi, installedMsi], { runtime: { canInstallOrRemove: () => false } });
+  await assert.rejects(run(), /exit_unconfirmed/);
+  assert.deepEqual(steps, ["read", "/i", "binaries", "read", "credentials"]);
+  assert.equal(observation.cleanupReason, "exit_unconfirmed");
+});
+
+test("installer refuses unknown or matching legacy MSI registration before NSIS", async () => {
+  const runtime = {};
+  const fixture = value => async (artifact, context, operation) => {
+    assert.equal(artifact, "fixture.msi");
+    assert.equal(context, runtime);
+    assert.equal(operation, "nsis.migration_check");
+    return value;
+  };
+  await assertNoLegacyMsi("fixture.msi", runtime, fixture({ legacyMsiPresent: false }));
+  await assert.rejects(assertNoLegacyMsi("fixture.msi", runtime, fixture({ legacyMsiPresent: true })), /nsis_legacy_msi_present/);
+  await assert.rejects(assertNoLegacyMsi("fixture.msi", runtime, fixture(null)), /nsis_migration_registration_unavailable/);
+});
+
+test("installer never sends the next RPC after the shared work budget runs out", async t => {
+  const calls = fixture(t, { initialize: init });
+  await assert.rejects(withWorkspace(record, assert.fail, { remaining: () => 0 }), /timeout/);
+  assert.deepEqual(calls, []);
+});
+
+for (const remains of [false, true]) {
+  test("installer waits for the copied NSIS uninstaller and " + (remains ? "rejects leftover files" : "confirms file removal"), async t => {
+    const profile = mkdtempSync(join(tmpdir(), "hara nsis fixture "));
+    const dest = join(profile, "installed-nsis");
+    const binary = join(dest, "hara.exe");
+    const uninstaller = join(dest, "uninstall.exe");
+    const copy = join(profile, "nsis-uninstall.exe");
+    t.after(() => {
+      if (remains) unlinkSync(binary);
+      unlinkSync(uninstaller);
+      unlinkSync(copy);
+      rmdirSync(dest);
+      rmdirSync(profile);
+    });
+    const calls = [];
+    const runtime = {
+      canInstallOrRemove: () => true,
+      remaining: () => 0,
+      phase: (_, __, action) => action(),
+      async command(kind, phase, file, args, options) {
+        calls.push([kind, phase, file, args, options]);
+        if (phase === "nsis.install") {
+          mkdirSync(dest);
+          writeFileSync(binary, "fixture");
+          writeFileSync(uninstaller, "uninstaller fixture");
+        } else {
+          assert.equal(readFileSync(copy, "utf8"), "uninstaller fixture");
+          if (!remains) unlinkSync(binary);
+        }
+      },
+    };
+    const uninstall = await installNsis(runtime, "setup.exe", dest, profile);
+    if (remains) await assert.rejects(uninstall(), /nsis_uninstall_files_remain/);
+    else await uninstall();
+    assert.deepEqual(calls, [
+      ["nsis", "nsis.install", "setup.exe", ["/S", "/D=" + dest], { windowsVerbatimArguments: true }],
+      ["nsis", "nsis.uninstall", copy, ["/S", "_?=" + dest], { cleanup: true, windowsVerbatimArguments: true }],
+    ]);
+  });
+}

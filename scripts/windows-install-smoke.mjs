@@ -1,23 +1,17 @@
 // Hosted Windows only. Exercise the actual installer, its Desktop, and its adjacent Workspace Core.
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { binarySHA, readWindowsVaultBinding, verifyWindowsVaultSidecar, windowsVaultRequired } from "./windows-vault-bundle.mjs";
-import { installedBinaries, withMsiInstallation } from "./windows-install-layout.mjs";
+import { assertNoLegacyMsi, installedBinaries, installNsis, withMsiInstallation } from "./windows-install-layout.mjs";
+import { SmokeProcessError, smokeRuntime } from "./windows-install-process.mjs";
 import { SmokeError, check, origin, withWorkspace } from "./windows-install-workspace.mjs";
 
 const model = "hara-vault-smoke-model";
-
-function command(name, args, { windowsVerbatimArguments = false, accepted = [0] } = {}) {
-  const result = spawnSync(name, args, { encoding: "utf8", timeout: 300_000, windowsHide: true,
-    ...(windowsVerbatimArguments ? { windowsVerbatimArguments: true, argv0: `"${name}"` } : {}) });
-  check(!result.error && accepted.includes(result.status), `Installer or process check failed (${result.status ?? "no exit status"})`);
-  return result.stdout;
-}
 
 function installer(release, kind) {
   const dir = join(release, "bundle", kind);
@@ -26,76 +20,103 @@ function installer(release, kind) {
   return join(dir, files[0]);
 }
 
-function installNsis(artifact, dest) {
-  check(!existsSync(dest), "Refusing to install into an existing location");
-  // NSIS requires the /D argument to be last and its path unquoted, including any spaces.
-  command(artifact, ["/S", `/D=${dest}`], { windowsVerbatimArguments: true });
-  return () => {
-    const uninstaller = join(dest, "uninstall.exe");
-    check(existsSync(uninstaller), "Installed NSIS uninstaller missing");
-    command(uninstaller, ["/S"]);
-  };
+async function identify(runtime, kind, pid, options = {}) {
+  check(Number.isSafeInteger(pid) && pid > 1, "Invalid smoke process ID");
+  const { stdout } = await runtime.command(kind, "process.identify", "powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    `$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}'; if ($null -eq $p) { 'null' } else { $p | Select-Object ProcessId,ParentProcessId,ExecutablePath,@{Name='Started';Expression={$_.CreationDate.ToUniversalTime().Ticks.ToString()}} | ConvertTo-Json -Compress }`],
+  { ...options, capture: true });
+  const row = JSON.parse(stdout);
+  if (row === null) return null;
+  check(row?.ProcessId === pid && typeof row.ExecutablePath === "string" && /^\d+$/u.test(row.Started), "Invalid smoke process identity");
+  return row;
 }
 
-function checkCoreChild(record, desktop, sidecar) {
-  check(Number.isSafeInteger(record.pid) && record.pid > 1, "Discovery did not contain a valid Core PID");
-  const row = JSON.parse(command("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    `Get-CimInstance Win32_Process -Filter 'ProcessId = ${record.pid}' | Select-Object ProcessId,ParentProcessId,ExecutablePath | ConvertTo-Json -Compress`]));
-  check(row?.ProcessId === record.pid && row.ParentProcessId === desktop.pid && row.ExecutablePath
-    && realpathSync.native(row.ExecutablePath).toLowerCase() === realpathSync.native(sidecar).toLowerCase(),
-  "The discovered Core is not the installed Desktop's adjacent child");
+const nativePath = path => realpathSync.native(path).toLowerCase();
+function verifyIdentity(row, expectedPath, startTime) {
+  check(row && nativePath(row.ExecutablePath) === nativePath(expectedPath)
+    && (startTime === undefined || row.Started === startTime), "Smoke process identity changed");
 }
 
-async function start(root, home, { previousInstance, direct = false } = {}) {
+async function start(runtime, kind, root, home, { previousInstance, direct = false } = {}) {
   const workspaceRoot = join(home, ".hara", "workspaces-v1"), core = join(root, "hara.exe");
+  const executable = direct ? core : join(root, "hara-desktop.exe");
   if (direct) mkdirSync(workspaceRoot, { recursive: true });
-  // Start the copied CLI with a small environment so the Desktop marker cannot be inherited.
   const env = direct
     ? { SystemRoot: process.env.SystemRoot, PATH: process.env.PATH, HOME: home, USERPROFILE: home,
         HARA_WORKSPACE_HOST_HOME: home, HARA_WORKSPACE_DISCOVERY_HOME: home, HARA_WORKSPACE_LEGACY_SOURCE_HOME: home,
         HARA_CLIENT_LOCALE: "en", HARA_UPDATE_CHECK: "0" }
     : { ...process.env, HOME: home, USERPROFILE: home, WEBVIEW2_USER_DATA_FOLDER: join(home, "webview") };
   const args = direct ? ["workspace", "serve", "--root", workspaceRoot, "--port", "0"] : [];
-  const child = spawn(direct ? core : join(root, "hara-desktop.exe"), args, { windowsHide: true, stdio: "ignore", env });
-  let launchError = false, ownedCore = null;
-  child.once("error", () => { launchError = true; });
+  let child, launchError = false, owner, ownedCore;
+  const running = () => child?.pid && child.exitCode === null && child.signalCode === null;
   const stop = async () => {
-    const childRunning = () => !!child.pid && child.exitCode === null && child.signalCode === null;
-    const coreRunning = () => {
-      if (!ownedCore) return false;
-      try { process.kill(ownedCore.pid, 0); return true; }
-      catch (error) { if (error.code === "ESRCH") return false; throw error; }
-    };
-    if (childRunning()) command("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"]);
-    else if (coreRunning()) {
-      checkCoreChild(ownedCore, child, core);
-      command("taskkill.exe", ["/PID", String(ownedCore.pid), "/T", "/F"]);
+    if (!child?.pid) return;
+    try {
+      await runtime.phase(kind, "desktop.stop", async () => {
+        const options = { cleanup: true };
+        const stopTree = pid => runtime.command(kind, "process.stop", "taskkill.exe", ["/PID", String(pid), "/T", "/F"], options);
+        const target = await identify(runtime, kind, child.pid, options);
+        if (target) {
+          check(owner, "exit_unconfirmed");
+          verifyIdentity(target, executable, owner.Started);
+          await stopTree(child.pid);
+        } else if (ownedCore) {
+          const current = await identify(runtime, kind, ownedCore.ProcessId, options);
+          if (current) {
+            verifyIdentity(current, core, ownedCore.Started);
+            check(current.ParentProcessId === child.pid, "Smoke Core ownership changed");
+            await stopTree(current.ProcessId);
+          }
+        }
+        const exitsBy = performance.now() + Math.min(5000, runtime.remaining(options));
+        while (running() && performance.now() < exitsBy) await wait(50);
+        // An early Desktop exit can leave a Core that never published discovery.
+        if (running() || (!direct && !ownedCore)) throw new SmokeProcessError("exit_unconfirmed");
+        if (ownedCore && await identify(runtime, kind, ownedCore.ProcessId, options)) {
+          throw new SmokeProcessError("exit_unconfirmed");
+        }
+      }, { cleanup: true });
+    } catch (error) {
+      runtime.markUnsafe();
+      child.unref();
+      if (error instanceof SmokeProcessError) throw error;
+      throw new SmokeProcessError("exit_unconfirmed");
     }
-    for (let i = 0; i < 50 && (childRunning() || coreRunning()); i++) await wait(100);
-    check(!childRunning() && !coreRunning(), "Smoke Workspace process tree did not stop");
   };
-  const deadline = Date.now() + 180_000;
+  const deadline = performance.now() + 180_000;
   const discovery = join(workspaceRoot, "home", ".hara", "workspace-runtime", "serve-v2.json");
   try {
-    while (Date.now() < deadline && !launchError && child.exitCode === null && child.signalCode === null) {
-      let record = null;
-      try { record = JSON.parse(readFileSync(discovery, "utf8")); } catch { /* File not yet published. */ }
-      if (record && record.instanceId !== previousInstance) {
-        check(record.schemaVersion === 2 && record.executionMode === "workspace" && typeof record.instanceId === "string"
-          && /^[a-f0-9]{64}$/u.test(record.token) && Number.isSafeInteger(record.port) && record.port > 0 && record.port < 65536,
-        "Invalid Workspace discovery");
-        if (direct) check(record.pid === child.pid, "Discovery PID did not match the directly launched Core");
-        else {
-          checkCoreChild(record, child, core);
-          ownedCore = record;
+    await runtime.phase(kind, "desktop.start", async () => {
+      child = spawn(executable, args, { windowsHide: true, stdio: "ignore", env });
+      child.on("error", () => { launchError = true; });
+      if (!child.pid) throw new SmokeProcessError("spawn_failed");
+      owner = await identify(runtime, kind, child.pid, { until: deadline });
+      verifyIdentity(owner, executable);
+    }, { until: deadline });
+    return await runtime.phase(kind, "core.ready", async () => {
+      while (runtime.remaining({ until: deadline }) && !launchError && running()) {
+        let record;
+        try { record = JSON.parse(readFileSync(discovery, "utf8")); } catch { /* File not yet published. */ }
+        if (record && record.instanceId !== previousInstance) {
+          check(record.schemaVersion === 2 && record.executionMode === "workspace" && typeof record.instanceId === "string"
+            && /^[a-f0-9]{64}$/u.test(record.token) && Number.isSafeInteger(record.port) && record.port > 0 && record.port < 65536,
+          "Invalid Workspace discovery");
+          if (direct) check(record.pid === child.pid, "Discovery PID did not match the directly launched Core");
+          else {
+            const row = await identify(runtime, kind, record.pid, { until: deadline });
+            verifyIdentity(row, core);
+            check(row.ParentProcessId === child.pid, "The discovered Core is not the installed Desktop's adjacent child");
+            ownedCore = row;
+          }
+          return { record, stop };
         }
-        return { record, stop };
+        await wait(Math.min(400, runtime.remaining({ until: deadline })));
       }
-      await wait(400);
-    }
-    throw new SmokeError("Installed Workspace engine did not publish discovery");
+      if (!runtime.remaining({ until: deadline })) throw new SmokeProcessError("timeout");
+      throw new SmokeError("Installed Workspace engine did not publish discovery");
+    }, { until: deadline });
   } catch (error) {
-    await stop();
+    try { await stop(); } catch { /* The stop phase records the separate reason. */ }
     throw error;
   }
 }
@@ -111,7 +132,7 @@ function savedConnection(view, id) {
   return row;
 }
 
-async function credentials(root, home, { onInitialized, onRpcFailure }) {
+async function credentials(runtime, kind, root, home, { onInitialized, onRpcFailure }) {
   const keys = [randomBytes(24).toString("hex"), randomBytes(24).toString("hex")];
   let expected = null, seen = 0, unexpected = 0;
   const server = createServer((req, res) => {
@@ -123,9 +144,7 @@ async function credentials(root, home, { onInitialized, onRpcFailure }) {
     seen++;
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ data: [{ id: model }] }));
   });
-  const listening = once(server, "listening");
-  server.listen(0, origin);
-  await listening;
+  const listener = new AbortController();
   const input = apiKey => ({ label: "Windows smoke", provider: "openai", baseURL: `http://${origin}:${server.address().port}/v1`, defaultModel: model, apiKey });
   async function verifyRead(rpc, view, row, key) {
     const before = seen;
@@ -138,21 +157,27 @@ async function credentials(root, home, { onInitialized, onRpcFailure }) {
   }
 
   try {
-    const first = await start(root, home);
+    await runtime.phase(kind, "http.listen", () => {
+      const listening = once(server, "listening", { signal: listener.signal });
+      server.listen({ port: 0, host: origin, signal: listener.signal });
+      return runtime.waitFor(listening, 5000);
+    });
+    const first = await start(runtime, kind, root, home);
     let saved;
     try {
-      saved = await withWorkspace(first.record, async (rpc, snapshot) => {
+      saved = await runtime.phase(kind, "vault.save", () => withWorkspace(first.record, async (rpc, snapshot) => {
         const before = await snapshot();
         await rpc("workspace.connection.add", { ...scope(before), expectedRevision: before.connections.revision, input: input(keys[0]) });
         const after = await snapshot();
         const row = savedConnection(after);
         check(after.connections.revision > before.connections.revision, "Add did not advance connection revision");
         return { workspaceId: before.workspaceId, row };
-      }, { onInitialized, onRpcFailure });
+      }, { onInitialized, onRpcFailure, remaining: runtime.remaining }));
     } finally { await first.stop(); }
-    const second = await start(root, home, { previousInstance: first.record.instanceId });
+    const second = await runtime.phase(kind, "vault.restart",
+      () => start(runtime, kind, root, home, { previousInstance: first.record.instanceId }));
     try {
-      return await withWorkspace(second.record, async (rpc, snapshot) => {
+      return await runtime.phase(kind, "vault.rotate", () => withWorkspace(second.record, async (rpc, snapshot) => {
         const reopened = await snapshot();
         const original = savedConnection(reopened, saved.row.id);
         check(original.credentialGeneration === saved.row.credentialGeneration && original.revision === saved.row.revision,
@@ -167,14 +192,23 @@ async function credentials(root, home, { onInitialized, onRpcFailure }) {
         await rpc("workspace.connection.delete", { ...scope(updated), connectionId: rotated.id, expectedRevision: updated.connections.revision, approved: true });
         return { keySaved: true, restartReadback: true, rotationReadback: true, addedRevision: reopened.connections.revision,
           rotatedRevision: updated.connections.revision, loopbackCatalogRequests: seen, loopbackUnexpected: unexpected };
-      }, { expectedWorkspaceId: saved.workspaceId, onRpcFailure });
+      }, { expectedWorkspaceId: saved.workspaceId, onRpcFailure, remaining: runtime.remaining }));
     } finally { await second.stop(); }
   } finally {
-    await new Promise(resolve => server.close(resolve));
+    try {
+      await runtime.phase(kind, "http.close", () => runtime.waitFor(new Promise(resolve => server.close(resolve)),
+        5000, { cleanup: true }), { cleanup: true });
+    } catch (error) {
+      server.closeAllConnections();
+      server.unref();
+      throw error;
+    } finally {
+      listener.abort();
+    }
   }
 }
 
-async function verifyCredentialRefusal(installed, profile, reason, binding, onRpcFailure) {
+async function verifyCredentialRefusal(runtime, installed, profile, reason, binding, onRpcFailure) {
   const direct = reason === "windows_desktop_required";
   const code = direct ? "unsupported" : "unavailable";
   const testRoot = join(profile, reason), launcher = join(testRoot, "app"), home = join(testRoot, "home");
@@ -188,17 +222,18 @@ async function verifyCredentialRefusal(installed, profile, reason, binding, onRp
     const worker = join(launcher, "hara-credential-worker.exe");
     copyFileSync(join(process.env.RUNNER_TEMP, "hara-vault-unbound-worker", "hara-credential-worker.exe"), worker);
     check(binarySHA(worker) !== binding.expectedWorkerSHA256, "Wrong-digest worker fixture did not change bytes");
-    command(worker, [], { accepted: [65] }); // Valid worker executable takes the empty-stdin exit.
+    await runtime.command("nsis", "worker.empty_input", worker, [], { accepted: [65] }); // Valid worker executable takes the empty-stdin exit.
   }
-  const localAppData = command("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    "[Environment]::GetFolderPath('LocalApplicationData')"]).trim();
+  const { stdout } = await runtime.command("nsis", "vault.app_data", "powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); [Environment]::GetFolderPath('LocalApplicationData')"], { capture: true });
+  const localAppData = stdout.trim();
   const namespace = createHash("sha256").update("hara-host-home-v1\0")
     .update(realpathSync.native(home).replaceAll("/", "\\")).digest("hex");
   check(/^[a-z]:\\/iu.test(localAppData), "Cannot determine hosted DPAPI storage location");
   const vaultHome = join(localAppData, "Hara", "credential-vault", "v1", namespace);
   check(!existsSync(vaultHome), "Negative fixture vault namespace already exists");
 
-  const host = await start(launcher, home, { direct });
+  const host = await start(runtime, "nsis", launcher, home, { direct });
   try {
     return await withWorkspace(host.record, async (rpc, snapshot) => {
       const before = await snapshot();
@@ -212,7 +247,7 @@ async function verifyCredentialRefusal(installed, profile, reason, binding, onRp
         && after.connections.connections.length === before.connections.connections.length && !existsSync(vaultHome),
       "Refused credential operation changed the connection store or the vault");
       return { code, reason, configured: false, writes: 0 };
-    }, { backend: direct ? "none" : "windows-dpapi", onRpcFailure });
+    }, { backend: direct ? "none" : "windows-dpapi", onRpcFailure, remaining: runtime.remaining });
   } finally { await host.stop(); }
 }
 
@@ -222,8 +257,11 @@ async function main([releaseBase, output, mode]) {
   check(releaseBase && output && (mode === undefined || mode === "--release-only"), "Invalid Windows install smoke arguments");
   mkdirSync(output, { recursive: true });
   const receiptPath = join(output, "windows-install-smoke.json");
-  // One smoke invocation owns this runner output. Clear any old receipt before publishing.
+  // One smoke invocation owns this runner output. Clear previous run files before publishing.
   rmSync(receiptPath, { force: true });
+  const progressFile = join(output, "windows-install-progress.jsonl");
+  rmSync(progressFile, { force: true });
+  const runtime = smokeRuntime({ progressFile });
   const result = { schemaVersion: 1, desktopCommit: null, coreCommit: null, results: [], refusals: [], installationChecks: [] };
   let installerKind = null, scenario = null, rpcFailure = null;
   const onRpcFailure = diagnostic => { rpcFailure = diagnostic; };
@@ -231,66 +269,80 @@ async function main([releaseBase, output, mode]) {
     const pending = join(output, `.windows-install-smoke-${randomBytes(8).toString("hex")}.tmp`);
     writeFileSync(pending, JSON.stringify(value, null, 2) + "\n", { flag: "wx" });
     renameSync(pending, receiptPath);
-    console.log(JSON.stringify(value));
+    writeSync(process.stdout.fd, JSON.stringify(value) + "\n");
   };
   try {
-    const required = windowsVaultRequired();
-    if (!required && mode === "--release-only") return;
-    // prepackage may check out a commit different from GITHUB_SHA.
-    const desktopCommit = command("git", ["rev-parse", "HEAD"]).trim();
-    check(/^[a-f0-9]{40}$/u.test(desktopCommit), "Installed smoke requires a known Desktop commit");
-    result.desktopCommit = desktopCommit;
-    const receipt = required ? readWindowsVaultBinding() : null;
-    result.coreCommit = receipt?.coreCommit ?? null;
-    const profile = mkdtempSync(join(process.env.USERPROFILE, "hara-install-smoke-"));
-    for (const kind of required ? ["msi", "nsis"] : ["nsis"]) {
-      installerKind = kind;
-      scenario = "installed";
-      const artifact = installer(resolve(releaseBase), kind);
-      const root = join(profile, `installed-${kind}`), home = join(profile, `home-${kind}`);
-      mkdirSync(home);
-      const installation = { kind, desktopPresent: null, corePresent: null, workerPresent: null };
-      result.installationChecks.push(installation);
-      const exercise = async () => {
-        console.log(`Verifying installed ${kind} Desktop and Core`);
-        check(installation.desktopPresent && installation.corePresent, "Installed Desktop or Core missing");
-        if (receipt) {
-          const workerSHA256 = verifyWindowsVaultSidecar(join(root, "hara.exe"), receipt);
-          result.results.push({ kind, installerSHA256: binarySHA(artifact), expectedWorkerSHA256: receipt.expectedWorkerSHA256,
-            workerSHA256, ...await credentials(root, home, {
-              onRpcFailure,
-              onInitialized(credentialStorage) {
-                console.log(JSON.stringify({ stage: "initialize", installerKind, credentialStorage }));
-              },
-            }) });
-          if (kind === "nsis" && mode !== "--release-only") {
-            for (const reason of ["helper_invalid", "helper_missing", "windows_desktop_required"]) {
-              scenario = reason;
-              result.refusals.push(await verifyCredentialRefusal(root, profile, reason, receipt, onRpcFailure));
+    await runtime.phase("none", "smoke", async () => {
+      const required = windowsVaultRequired();
+      if (!required && mode === "--release-only") return;
+      // prepackage may check out a commit different from GITHUB_SHA.
+      const { stdout } = await runtime.command("none", "git.head", "git", ["rev-parse", "HEAD"], { capture: true });
+      const desktopCommit = stdout.trim();
+      check(/^[a-f0-9]{40}$/u.test(desktopCommit), "Installed smoke requires a known Desktop commit");
+      result.desktopCommit = desktopCommit;
+      const receipt = required ? readWindowsVaultBinding() : null;
+      result.coreCommit = receipt?.coreCommit ?? null;
+      const profile = mkdtempSync(join(process.env.USERPROFILE, "hara-install-smoke-"));
+      const msiArtifact = required ? installer(resolve(releaseBase), "msi") : null;
+      for (const kind of required ? ["msi", "nsis"] : ["nsis"]) {
+        check(runtime.remaining() > 0, "smoke_budget_exhausted");
+        installerKind = kind;
+        scenario = "installed";
+        const artifact = kind === "msi" ? msiArtifact : installer(resolve(releaseBase), kind);
+        const root = join(profile, `installed-${kind}`), home = join(profile, `home-${kind}`);
+        mkdirSync(home);
+        const installation = { kind, desktopPresent: null, corePresent: null, workerPresent: null };
+        result.installationChecks.push(installation);
+        const exercise = async () => {
+          check(installation.desktopPresent && installation.corePresent, "Installed Desktop or Core missing");
+          if (receipt) {
+            const workerSHA256 = verifyWindowsVaultSidecar(join(root, "hara.exe"), receipt);
+            result.results.push({ kind, installerSHA256: binarySHA(artifact), expectedWorkerSHA256: receipt.expectedWorkerSHA256,
+              workerSHA256, ...await credentials(runtime, kind, root, home, {
+                onRpcFailure,
+                onInitialized(credentialStorage) {
+                  writeSync(process.stdout.fd, JSON.stringify({ stage: "initialize", installerKind, credentialStorage }) + "\n");
+                },
+              }) });
+            if (kind === "nsis" && mode !== "--release-only") {
+              for (const reason of ["helper_invalid", "helper_missing", "windows_desktop_required"]) {
+                scenario = reason;
+                result.refusals.push(await runtime.phase(kind, `refusal.${reason}`,
+                  () => verifyCredentialRefusal(runtime, root, profile, reason, receipt, onRpcFailure)));
+              }
+            }
+          } else {
+            const app = await start(runtime, kind, root, home);
+            await app.stop();
+            result.results.push({ kind, workspaceStarted: true });
+          }
+        };
+
+        if (kind === "msi") {
+          await withMsiInstallation(artifact, root, installation, exercise, { runtime });
+        } else {
+          if (msiArtifact) await assertNoLegacyMsi(msiArtifact, runtime);
+          const uninstall = await installNsis(runtime, artifact, root, profile);
+          let failed = false;
+          try {
+            Object.assign(installation, installedBinaries(root));
+            await exercise();
+          } catch (error) {
+            failed = true;
+            throw error;
+          } finally {
+            if (runtime.canInstallOrRemove()) {
+              try { await uninstall(); } catch (error) { if (!failed) throw error; }
             }
           }
-        } else {
-          const app = await start(root, home);
-          await app.stop();
-          result.results.push({ kind, workspaceStarted: true });
         }
-      };
-
-      if (kind === "msi") {
-        await withMsiInstallation(artifact, root, installation, exercise);
-      } else {
-        const uninstall = installNsis(artifact, root);
-        try {
-          Object.assign(installation, installedBinaries(root));
-          await exercise();
-        } finally { uninstall(); }
       }
-    }
+    });
   } catch (error) {
     publish({ ...result, failure: { installerKind, scenario, rpc: rpcFailure } });
     throw error;
   }
-  publish(result);
+  if (result.desktopCommit !== null) publish(result);
 }
 await main(process.argv.slice(2)).catch(error => {
   console.error(error instanceof SmokeError ? `windows-install-smoke: ${error.message}` : "windows-install-smoke: unexpected installer or fixture failure");

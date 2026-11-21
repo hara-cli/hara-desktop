@@ -47,7 +47,8 @@ class SmokeRpcError extends SmokeError {
   }
 }
 
-export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId, onInitialized, onRpcFailure } = {}) {
+export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId, onInitialized, onRpcFailure, remaining = () => Infinity } = {}) {
+  if (!remaining()) throw new SmokeRpcError("initialize", "timeout");
   const socket = new WebSocket(`ws://${origin}:${record.port}`);
   let id = 0;
   try {
@@ -61,12 +62,14 @@ export async function withWorkspace(record, action, { backend = "windows-dpapi",
       };
       const opened = () => finish();
       const failed = () => finish(new SmokeError("Installed Core WebSocket could not connect"));
-      const timer = setTimeout(failed, 8000);
+      const timer = setTimeout(failed, Math.min(8000, remaining()));
       socket.addEventListener("open", opened);
       socket.addEventListener("error", failed);
       socket.addEventListener("close", failed);
     });
     const rpc = (method, params = {}, expectedVaultError, timeoutMs = 35_000) => new Promise((resolve, reject) => {
+      const budget = Math.min(timeoutMs, remaining());
+      if (!budget) { reject(new SmokeRpcError(method, "timeout")); return; }
       const requestId = ++id;
       const finish = (error, result) => {
         clearTimeout(timer);
@@ -94,7 +97,7 @@ export async function withWorkspace(record, action, { backend = "windows-dpapi",
       const failed = (kind, error) => finish(new SmokeRpcError(method, kind, error));
       const closed = () => failed("socket_closed");
       const socketError = () => failed("socket_error");
-      const timer = setTimeout(() => failed("timeout"), timeoutMs);
+      const timer = setTimeout(() => failed("timeout"), budget);
       socket.addEventListener("message", receive);
       socket.addEventListener("close", closed);
       socket.addEventListener("error", socketError);
