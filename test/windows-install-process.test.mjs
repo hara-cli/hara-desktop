@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { SmokeProcessError, observeCoreIdentity, smokeRuntime, verifyIdentity } from "../scripts/windows-install-process.mjs";
+import { SmokeProcessError, observeCoreExit, observeCoreIdentity, sameCoreDiscovery, smokeRuntime, verifyIdentity } from "../scripts/windows-install-process.mjs";
 import { SmokeError, check } from "../scripts/windows-install-workspace.mjs";
 
 function recorder(options) {
@@ -250,3 +250,73 @@ test("installer startup times out after late discovery confirmation and cleans t
   assert.deepEqual(rows.filter(entry => entry.event !== "begin").map(entry => [entry.stage, entry.event, entry.outcome]),
     [["desktop.start", "end", "ok"], ["core.ready", "timeout", "timeout"], ["desktop.stop", "end", "ok"]]);
 });
+
+test("installer Core missing-CIM diagnostic uses signal zero and only fixed classifications", () => {
+  const privateText = "PRIVATE PATH OR TOKEN";
+  const notices = observeCoreExit("fixture-home", 15, {
+    probe(pid, signal) {
+      assert.deepEqual([pid, signal], [15, 0]);
+      throw Object.assign(new Error(privateText), { code: "ESRCH" });
+    },
+    readLog(file) {
+      return file.endsWith("workspace-startup.log")
+        ? "123 desktop=1.3.0 os=windows engine exited before connecting: " + privateText
+        : "hara workspace: startup/request failed; verify the explicit private Workspace root and options. No legacy fallback was started.\r\n";
+    },
+  });
+  assert.deepEqual(notices, { pidPresence: "absent", desktopEarlyExit: "seen", coreCliStartupError: "seen" });
+  assert.equal(JSON.stringify(notices).includes(privateText), false);
+  const failure = code => () => { throw Object.assign(new Error(privateText), { code }); };
+  assert.deepEqual(observeCoreExit("fixture-home", 15, { probe: failure("EPERM"), readLog: failure("EACCES") }),
+    { pidPresence: "unknown", desktopEarlyExit: "unknown", coreCliStartupError: "unknown" });
+  assert.deepEqual(observeCoreExit("fixture-home", 15, { probe() {}, readLog: failure("ENOENT") }),
+    { pidPresence: "present", desktopEarlyExit: "not_seen", coreCliStartupError: "not_seen" });
+});
+
+for (const changed of [false, true]) {
+  test("installer observes a missing Core before cleanup and marks " + (changed ? "different generations" : "the same generation"), async () => {
+    const source = readFileSync(new URL("../scripts/windows-install-smoke.mjs", import.meta.url), "utf8");
+    const startSource = source.match(/^async function start\([\s\S]*?^\}/mu)?.[0];
+    assert(startSource);
+    let now = 0, current = record;
+    const next = { ...record, instanceId: "second-private-instance", pid: 16, token: "b".repeat(64) };
+    const { runtime } = recorder({ now: () => now });
+    const child = { pid: row.ParentProcessId, exitCode: null, signalCode: null, on() {}, unref() {} };
+    const actions = [], lines = [];
+    const start = runInNewContext(startSource + "\nstart", {
+      performance: { now: () => now }, process: { env: {}, stdout: { fd: 1 } },
+      join: (...parts) => parts[1] === "hara-desktop.exe" ? otherExecutable : join(...parts),
+      spawn: () => child, SmokeError, SmokeProcessError, check, observeCoreIdentity, sameCoreDiscovery, verifyIdentity,
+      readDiscovery: () => current,
+      writeSync: (_fd, line) => lines.push(JSON.parse(line)),
+      wait: async () => {
+        if (changed && current === record) {
+          current = next;
+          now = 400;
+        } else now = 180_001;
+      },
+      identify: async (_runtime, _kind, pid) => pid === child.pid
+        ? { ProcessId: child.pid, ExecutablePath: otherExecutable, Started: "100" } : null,
+      observeCoreExit(home, pid) {
+        assert.equal(home, "fixture-home");
+        actions.push(pid);
+        return { pidPresence: pid === record.pid ? "present" : "absent", desktopEarlyExit: "not_seen", coreCliStartupError: "not_seen" };
+      },
+    });
+    runtime.command = async (_kind, stage, _program, args) => {
+      assert.equal(stage, "process.stop");
+      assert.deepEqual(Array.from(args), ["/PID", String(child.pid), "/T", "/F"]);
+      actions.push("stop-desktop");
+      child.exitCode = 0;
+      return { exitCode: 0 };
+    };
+    await assert.rejects(start(runtime, "nsis", "fixture-app", "fixture-home"), { message: "timeout" });
+    assert.deepEqual(actions, [record.pid, changed ? next.pid : record.pid, "stop-desktop"]);
+    const probes = lines.filter(line => line.stage === "core.exit_probe");
+    assert.deepEqual(probes.map(line => [line.sample, line.sameGenerationAsFirstUnseen, line.pidPresence]),
+      [["first_unseen", true, "present"], ["before_cleanup", !changed, changed ? "absent" : "present"]]);
+    assert(probes.every(line => Object.keys(line).sort().join(",") ===
+      "coreCliStartupError,desktopEarlyExit,installerKind,pidPresence,sameGenerationAsFirstUnseen,sample,stage"));
+    assert.equal(runtime.canInstallOrRemove(), false);
+  });
+}

@@ -47,7 +47,7 @@ class SmokeRpcError extends SmokeError {
   }
 }
 
-export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId, onInitialized, onRpcFailure, remaining = () => Infinity } = {}) {
+export async function withWorkspace(record, action, { backend = "windows-dpapi", expectedWorkspaceId, onInitialized, onRpcFailure, expectMissingWorker = false, remaining = () => Infinity } = {}) {
   if (!remaining()) throw new SmokeRpcError("initialize", "timeout");
   const socket = new WebSocket(`ws://${origin}:${record.port}`);
   let id = 0;
@@ -86,6 +86,8 @@ export async function withWorkspace(record, action, { backend = "windows-dpapi",
         if (expectedVaultError) {
           if (error?.data?.domain !== "credential-vault" || error.data.code !== expectedVaultError)
             return failed(error ? "rpc_error" : "unexpected_result", error);
+          if (expectMissingWorker && (error.code !== -32602 || error.data.retry !== "explicit_user_only"))
+            return failed("rpc_error", error);
           if (expectedVaultError === "unsupported" &&
               (error.data.retry !== "none" || typeof error.message !== "string" || !error.message.includes("Hara Desktop")))
             return failed("rpc_error", error);
@@ -110,7 +112,11 @@ export async function withWorkspace(record, action, { backend = "windows-dpapi",
       onInitialized?.(initialCredentialStorage);
       check(init.capabilities?.includes("workspace.v1") && init.capabilities.includes("workspace.credential-storage.v1")
         && init.credentialStorage?.backend === backend, "Core did not advertise the expected credential backend");
-      // A clean install has a Host and an empty catalog until a client creates a Workspace.
+      if (expectMissingWorker) {
+      check(init.credentialStorage?.supported === true && initialCredentialStorage?.state === "unavailable"
+        && initialCredentialStorage.reason === "helper_missing", "Missing worker not reported at Workspace initialize");
+    }
+    // A clean install has a Host and an empty catalog until a client creates a Workspace.
       const directory = await rpc("workspace.list");
       check(Array.isArray(directory?.workspaces) && Number.isSafeInteger(directory.revision) && directory.revision > 0,
         "Installed Core did not return the smoke Workspace directory");

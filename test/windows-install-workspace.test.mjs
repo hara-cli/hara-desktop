@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { assertNoLegacyMsi, classifyMsiDirectory, installNsis, withMsiInstallation } from "../scripts/windows-install-layout.mjs";
-import { withWorkspace } from "../scripts/windows-install-workspace.mjs";
+import { check, withWorkspace } from "../scripts/windows-install-workspace.mjs";
 
 const record = { port: 1, token: "local-fixture-token" };
 const init = { capabilities: ["workspace.v1", "workspace.credential-storage.v1"],
@@ -151,6 +153,64 @@ test("installer smoke preserves an expected credential refusal without publishin
   });
   assert.equal(await withWorkspace(record, rpc => rpc("workspace.connection.add", {}, "unavailable"), { onRpcFailure: assert.fail }), true);
 });
+
+function missingWorkerFixture(t, { supported = true, number = -32602, retry = "explicit_user_only" } = {}) {
+  const unavailable = { ...init.credentialStorage, supported: true, state: "unavailable", reason: "helper_missing" };
+  const view = { ...snapshot, connections: { revision: 1, connections: [] } };
+  const calls = fixture(t, {
+    initialize: { ...init, credentialStorage: { ...unavailable, supported } },
+    "workspace.list": empty,
+    "workspace.create": view,
+    "workspace.snapshot": view,
+    "workspace.connection.add": () => ({ error: { code: number, data: { domain: "credential-vault", code: "unavailable", retry } } }),
+    "workspace.credentialStorage.get": unavailable,
+  });
+  const script = readFileSync(new URL("../scripts/windows-install-smoke.mjs", import.meta.url), "utf8");
+  const refusal = script.match(/^async function verifyCredentialRefusal\([\s\S]*?^\}/mu)?.[0];
+  assert(refusal, "test must execute the actual installer refusal");
+  let stopped = false;
+  const runRefusal = runInNewContext(refusal + "\nverifyCredentialRefusal", {
+    check, withWorkspace, join, createHash, randomBytes, model: "fixture-model",
+    mkdirSync() {}, copyFileSync() {}, existsSync: () => false, realpathSync: { native: value => value },
+    scope: view => ({ workspaceId: view.workspaceId, expectedGeneration: view.resourceGeneration }),
+    start: async () => ({ record, stop: async () => { stopped = true; } }),
+  });
+  const harness = { command: async () => ({ stdout: "C:\\fixture-local-appdata" }), remaining: () => Infinity };
+  return { run: onRpcFailure => runRefusal(harness, "installed", "fixture-profile", "helper_missing", {}, onRpcFailure),
+    calls, stopped: () => stopped };
+}
+
+test("missing-worker installer accepts the complete initialize and add contract before signing zero writes", async t => {
+  const { run, calls, stopped } = missingWorkerFixture(t);
+  const receipt = await run(assert.fail);
+  assert.deepEqual(JSON.parse(JSON.stringify(receipt)), { code: "unavailable", reason: "helper_missing", configured: false, writes: 0 });
+  assert.deepEqual(calls.map(([method]) => method), ["initialize", "workspace.list", "workspace.create", "workspace.snapshot",
+    "workspace.connection.add", "workspace.snapshot", "workspace.credentialStorage.get"]);
+  assert.equal(stopped(), true);
+});
+
+for (const [label, bad, diagnostic] of [
+  ["initialize supported=false", { supported: false }, null],
+  ["add numeric error -32603", { number: -32603 }, { code: null, retry: "explicit_user_only" }],
+  ["add retry none", { retry: "none" }, { code: -32602, retry: "none" }],
+]) {
+  test("missing-worker installer rejects " + label, async t => {
+    const { run, calls, stopped } = missingWorkerFixture(t, bad);
+    let observed;
+    await assert.rejects(run(value => { observed = value; }), diagnostic ? /workspace\.connection\.add/ : /Missing worker not reported/);
+    const methods = calls.map(([method]) => method);
+    if (diagnostic) {
+      assert.equal(observed.error.code, diagnostic.code);
+      assert.equal(observed.error.data.retry, diagnostic.retry);
+      assert.deepEqual(methods, ["initialize", "workspace.list", "workspace.create", "workspace.snapshot",
+        "workspace.connection.add", "workspace.credentialStorage.get"]);
+    } else {
+      assert.equal(observed, undefined);
+      assert.deepEqual(methods, ["initialize"]);
+    }
+    assert.equal(stopped(), true);
+  });
+}
 
 const hostBindingUnavailable = { state: "unavailable", reason: "host_binding_unavailable" };
 for (const [description, initial] of [

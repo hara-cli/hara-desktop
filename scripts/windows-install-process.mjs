@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { appendFileSync, realpathSync, writeSync } from "node:fs";
+import { appendFileSync, closeSync, fstatSync, openSync, readSync, realpathSync, writeSync } from "node:fs";
+import { join } from "node:path";
 import { SmokeError, check } from "./windows-install-workspace.mjs";
 
 const commandLimits = new Map([
@@ -23,9 +24,14 @@ export function verifyIdentity(row, expectedPath, startTime) {
     && (startTime === undefined || row.Started === startTime), "Smoke process identity changed");
 }
 
+export function sameCoreDiscovery(record, current) {
+  return !!record && !!current
+    && ["schemaVersion", "executionMode", "instanceId", "pid", "port", "token"].every(key => current[key] === record[key]);
+}
+
 export function observeCoreIdentity(record, current, row, executable, desktopPid) {
   // The CIM result must describe the same discovery that is still on disk.
-  if (!current || ["schemaVersion", "executionMode", "instanceId", "pid", "port", "token"].some(key => current[key] !== record[key])) {
+  if (!sameCoreDiscovery(record, current)) {
     return { outcome: "core_discovery_changed", row: null };
   }
   if (!row) return { outcome: "core_pid_unseen", row: null };
@@ -36,6 +42,32 @@ export function observeCoreIdentity(record, current, row, executable, desktopPid
   check(matchesExecutable, "core_executable_mismatch");
   check(row.ParentProcessId === desktopPid, "core_parent_mismatch");
   return { outcome: "confirmed", row };
+}
+
+function readStartupPrefix(file) {
+  const fd = openSync(file, "r");
+  try {
+    if (!fstatSync(fd).isFile()) throw new Error("not a regular smoke log");
+    const bytes = Buffer.alloc(8192);
+    return bytes.toString("utf8", 0, readSync(fd, bytes, 0, bytes.length, 0));
+  } finally { closeSync(fd); }
+}
+
+export function observeCoreExit(home, pid, { probe = process.kill, readLog = readStartupPrefix } = {}) {
+  let pidPresence = "unknown";
+  if (Number.isSafeInteger(pid) && pid > 1 && pid <= 0x7fffffff) {
+    try { probe(pid, 0); pidPresence = "present"; }
+    catch (error) { if (error?.code === "ESRCH") pidPresence = "absent"; }
+  }
+  const marker = (name, pattern) => {
+    try { return pattern.test(readLog(join(home, ".hara", name))) ? "seen" : "not_seen"; }
+    catch (error) { return error?.code === "ENOENT" ? "not_seen" : "unknown"; }
+  };
+  return {
+    pidPresence,
+    desktopEarlyExit: marker("workspace-startup.log", /^\d+ desktop=\S+ os=windows engine exited before connecting:/mu),
+    coreCliStartupError: marker("workspace-core-stderr.log", /^hara workspace: startup\/request failed; verify the explicit private Workspace root and options\. No legacy fallback was started\.\r?$/mu),
+  };
 }
 
 export class SmokeProcessError extends SmokeError {

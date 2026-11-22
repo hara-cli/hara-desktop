@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { binarySHA, readWindowsVaultBinding, verifyWindowsVaultSidecar, windowsVaultRequired } from "./windows-vault-bundle.mjs";
 import { assertNoLegacyMsi, installedBinaries, installNsis, withMsiInstallation } from "./windows-install-layout.mjs";
-import { SmokeProcessError, observeCoreIdentity, smokeRuntime, verifyIdentity } from "./windows-install-process.mjs";
+import { SmokeProcessError, observeCoreExit, observeCoreIdentity, sameCoreDiscovery, smokeRuntime, verifyIdentity } from "./windows-install-process.mjs";
 import { SmokeError, check, origin, withWorkspace } from "./windows-install-workspace.mjs";
 
 const model = "hara-vault-smoke-model";
@@ -45,7 +45,14 @@ async function start(runtime, kind, root, home, { previousInstance, direct = fal
         HARA_CLIENT_LOCALE: "en", HARA_UPDATE_CHECK: "0" }
     : { ...process.env, HOME: home, USERPROFILE: home, WEBVIEW2_USER_DATA_FOLDER: join(home, "webview") };
   const args = direct ? ["workspace", "serve", "--root", workspaceRoot, "--port", "0"] : [];
-  let child, launchError = false, owner, ownedCore;
+  let child, launchError = false, owner, ownedCore, unseenCore, firstUnseenCore;
+  const reportCoreExit = (sample, record) => {
+    const observation = observeCoreExit(home, record.pid);
+    try {
+      writeSync(process.stdout.fd, JSON.stringify({ stage: "core.exit_probe", installerKind: kind, sample,
+        sameGenerationAsFirstUnseen: sameCoreDiscovery(firstUnseenCore, record), ...observation }) + "\n");
+    } catch { /* Diagnostic output cannot change ownership, credential or cleanup gates. */ }
+  };
   const running = () => child?.pid && child.exitCode === null && child.signalCode === null;
   const stop = async () => {
     if (!child?.pid) return;
@@ -104,7 +111,9 @@ async function start(runtime, kind, root, home, { previousInstance, direct = fal
             return { record, stop };
           }
           const row = await identify(runtime, kind, record.pid, { until: deadline });
+          unseenCore = undefined;
           const observed = observeCoreIdentity(record, readDiscovery(discovery), row, core, child.pid);
+          if (observed.outcome === "core_pid_unseen") unseenCore = record;
           if (observed.row) {
             ownedCore = observed.row;
             if (!runtime.remaining({ until: deadline })) throw new SmokeProcessError("timeout");
@@ -113,6 +122,10 @@ async function start(runtime, kind, root, home, { previousInstance, direct = fal
           }
           if (!pendingOutcomes.has(observed.outcome)) {
             pendingOutcomes.add(observed.outcome);
+            if (unseenCore) {
+              firstUnseenCore = unseenCore;
+              reportCoreExit("first_unseen", unseenCore);
+            }
             writeSync(process.stdout.fd, JSON.stringify({ stage: "core.identity", installerKind: kind, outcome: observed.outcome }) + "\n");
           }
         }
@@ -122,6 +135,9 @@ async function start(runtime, kind, root, home, { previousInstance, direct = fal
       throw new SmokeError("Installed Workspace engine did not publish discovery");
     }, { until: deadline });
   } catch (error) {
+    if (unseenCore && sameCoreDiscovery(unseenCore, readDiscovery(discovery))) {
+      reportCoreExit("before_cleanup", unseenCore);
+    }
     try { await stop(); } catch { /* The stop phase records the separate reason. */ }
     throw error;
   }
@@ -224,6 +240,7 @@ async function verifyCredentialRefusal(runtime, installed, profile, reason, bind
   const binaries = direct ? ["hara.exe", "hara-credential-worker.exe"] : ["hara-desktop.exe", "hara.exe", "herdr.exe"];
   for (const binary of binaries) copyFileSync(join(installed, binary), join(launcher, binary));
   if (direct) verifyWindowsVaultSidecar(join(launcher, "hara.exe"), binding);
+  if (reason === "helper_missing") check(!existsSync(join(launcher, "hara-credential-worker.exe")), "Missing-worker fixture contains a worker");
   if (reason === "helper_invalid") {
     const worker = join(launcher, "hara-credential-worker.exe");
     copyFileSync(join(process.env.RUNNER_TEMP, "hara-vault-unbound-worker", "hara-credential-worker.exe"), worker);
@@ -253,7 +270,8 @@ async function verifyCredentialRefusal(runtime, installed, profile, reason, bind
         && after.connections.connections.length === before.connections.connections.length && !existsSync(vaultHome),
       "Refused credential operation changed the connection store or the vault");
       return { code, reason, configured: false, writes: 0 };
-    }, { backend: direct ? "none" : "windows-dpapi", onRpcFailure, remaining: runtime.remaining });
+    }, { backend: direct ? "none" : "windows-dpapi", onRpcFailure, remaining: runtime.remaining,
+      expectMissingWorker: reason === "helper_missing" });
   } finally { await host.stop(); }
 }
 
@@ -311,7 +329,8 @@ async function main([releaseBase, output, mode]) {
                 },
               }) });
             if (kind === "nsis" && mode !== "--release-only") {
-              for (const reason of ["helper_invalid", "helper_missing", "windows_desktop_required"]) {
+              // Keep the copied-CLI receipt before the missing-worker startup diagnostic can block the run.
+              for (const reason of ["helper_invalid", "windows_desktop_required", "helper_missing"]) {
                 scenario = reason;
                 result.refusals.push(await runtime.phase(kind, `refusal.${reason}`,
                   () => verifyCredentialRefusal(runtime, root, profile, reason, receipt, onRpcFailure)));
