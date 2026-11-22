@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { appendFileSync, writeSync } from "node:fs";
-import { SmokeError } from "./windows-install-workspace.mjs";
+import { appendFileSync, realpathSync, writeSync } from "node:fs";
+import { SmokeError, check } from "./windows-install-workspace.mjs";
 
 const commandLimits = new Map([
   ["git.head", 10_000], ["worker.empty_input", 10_000],
@@ -15,6 +15,28 @@ const notices = new Set(["smoke", "msi.precheck", "msi.install", "msi.uninstall"
 const outcomes = new Set(["ok", "failed", "timeout", "spawn_failed", "nonzero", "exit_unconfirmed", "output_limit"]);
 const exitGrace = 3_000;
 const capturedLimit = 64 * 1024;
+
+const nativePath = path => realpathSync.native(path).toLowerCase();
+
+export function verifyIdentity(row, expectedPath, startTime) {
+  check(row && nativePath(row.ExecutablePath) === nativePath(expectedPath)
+    && (startTime === undefined || row.Started === startTime), "Smoke process identity changed");
+}
+
+export function observeCoreIdentity(record, current, row, executable, desktopPid) {
+  // The CIM result must describe the same discovery that is still on disk.
+  if (!current || ["schemaVersion", "executionMode", "instanceId", "pid", "port", "token"].some(key => current[key] !== record[key])) {
+    return { outcome: "core_discovery_changed", row: null };
+  }
+  if (!row) return { outcome: "core_pid_unseen", row: null };
+  check(row.ProcessId === record.pid, "core_pid_mismatch");
+  let matchesExecutable;
+  try { matchesExecutable = nativePath(row.ExecutablePath) === nativePath(executable); }
+  catch { throw new SmokeError("core_executable_unresolved"); }
+  check(matchesExecutable, "core_executable_mismatch");
+  check(row.ParentProcessId === desktopPid, "core_parent_mismatch");
+  return { outcome: "confirmed", row };
+}
 
 export class SmokeProcessError extends SmokeError {
   constructor(outcome, exitCode = null) {

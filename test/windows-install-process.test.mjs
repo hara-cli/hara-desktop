@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { runInNewContext } from "node:vm";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { SmokeProcessError, smokeRuntime } from "../scripts/windows-install-process.mjs";
+import { SmokeProcessError, observeCoreIdentity, smokeRuntime, verifyIdentity } from "../scripts/windows-install-process.mjs";
+import { SmokeError, check } from "../scripts/windows-install-workspace.mjs";
 
 function recorder(options) {
   const rows = [], notices = [];
@@ -156,4 +161,92 @@ test("installer JSON and notices exclude injected paths, ports, keys and workflo
     assert(!publicOutput.includes(value));
   }
   assert.equal(notices.at(-1), "::notice title=Windows install smoke::4 msi msi.install end failed\n");
+});
+
+const executable = fileURLToPath(new URL("../scripts/windows-install-process.mjs", import.meta.url));
+const otherExecutable = fileURLToPath(import.meta.url);
+const record = { schemaVersion: 2, executionMode: "workspace", instanceId: "fixture", pid: 15, port: 12345,
+  token: "a".repeat(64) };
+const row = { ProcessId: record.pid, ParentProcessId: 11, ExecutablePath: executable, Started: "123" };
+
+test("installer Core discovery can wait through a missing CIM row without opening RPC", () => {
+  assert.deepEqual(observeCoreIdentity(record, record, null, executable, 11), { outcome: "core_pid_unseen", row: null });
+  const confirmed = observeCoreIdentity(record, { ...record }, row, executable, 11);
+  assert.deepEqual(confirmed, { outcome: "confirmed", row });
+  assert.throws(() => verifyIdentity({ ...row, Started: "124" }, executable, confirmed.row.Started), /identity changed/);
+});
+
+test("installer Core discovery resamples publication and never attaches to the stale row", () => {
+  for (const key of Object.keys(record)) {
+    const current = { ...record, [key]: "changed-private-value" };
+    const observed = observeCoreIdentity(record, current, row, executable, 11);
+    assert.deepEqual(observed, { outcome: "core_discovery_changed", row: null });
+  }
+  assert.deepEqual(observeCoreIdentity(record, null, row, executable, 11), { outcome: "core_discovery_changed", row: null });
+  const latest = { ...record, pid: 16, instanceId: "new-fixture" };
+  const latestRow = { ...row, ProcessId: latest.pid };
+  assert.deepEqual(observeCoreIdentity(latest, latest, latestRow, executable, 11),
+    { outcome: "confirmed", row: latestRow });
+});
+
+test("installer Core discovery fails closed on stable PID, path and parent mismatches", () => {
+  assert.throws(() => observeCoreIdentity(record, record, { ...row, ProcessId: 16 }, executable, 11),
+    { message: "core_pid_mismatch" });
+  assert.throws(() => observeCoreIdentity(record, record, { ...row, ExecutablePath: otherExecutable }, executable, 11),
+    { message: "core_executable_mismatch" });
+  assert.throws(() => observeCoreIdentity(record, record, { ...row, ExecutablePath: executable + "-not-present" }, executable, 11),
+    { message: "core_executable_unresolved" });
+  assert.throws(() => observeCoreIdentity(record, record, { ...row, ParentProcessId: 12 }, executable, 11),
+    { message: "core_parent_mismatch" });
+});
+
+
+test("installer startup times out after late discovery confirmation and cleans the verified Core", async () => {
+  const source = readFileSync(new URL("../scripts/windows-install-smoke.mjs", import.meta.url), "utf8");
+  const startSource = source.match(/^async function start\([\s\S]*?^\}/mu)?.[0];
+  assert(startSource, "the regression must exercise the shipped start function");
+
+  let now = 0, reads = 0;
+  const child = { pid: row.ParentProcessId, exitCode: null, signalCode: null, on() {}, unref: assert.fail };
+  const { runtime, rows } = recorder({ now: () => now });
+  const stopCalls = [];
+  const fixtureRoot = "fixture-app";
+  const start = runInNewContext(startSource + "\nstart", {
+    performance: { now: () => now }, process: { env: {} },
+    join: (...parts) => {
+      if (parts[0] === fixtureRoot) return parts[1] === "hara.exe" ? executable : otherExecutable;
+      return join(...parts);
+    },
+    spawn: () => child, SmokeError, SmokeProcessError, check, observeCoreIdentity, verifyIdentity,
+    wait: async () => assert.fail("the confirmed but late Core should time out without another poll"),
+    readDiscovery: () => {
+      if (++reads === 2) now = 180_001;
+      return record;
+    },
+    identify: async (_runtime, _kind, pid, options) => {
+      if (pid === child.pid) {
+        if (options.cleanup) {
+          child.exitCode = 0;
+          return null;
+        }
+        return { ProcessId: child.pid, ExecutablePath: otherExecutable, Started: "100" };
+      }
+      assert.equal(pid, row.ProcessId);
+      if (options.cleanup) return stopCalls.length ? null : row;
+      now = 179_999;
+      return row;
+    },
+  });
+  runtime.command = async (kind, stage, program, args) => {
+    stopCalls.push([kind, stage, program, ...args]);
+    return { exitCode: 0 };
+  };
+
+  await assert.rejects(start(runtime, "nsis", fixtureRoot, "fixture-home"),
+    error => error instanceof SmokeProcessError && error.outcome === "timeout");
+  assert.equal(reads, 2);
+  assert.deepEqual(stopCalls, [["nsis", "process.stop", "taskkill.exe", "/PID", String(row.ProcessId), "/T", "/F"]]);
+  assert.equal(runtime.canInstallOrRemove(), true);
+  assert.deepEqual(rows.filter(entry => entry.event !== "begin").map(entry => [entry.stage, entry.event, entry.outcome]),
+    [["desktop.start", "end", "ok"], ["core.ready", "timeout", "timeout"], ["desktop.stop", "end", "ok"]]);
 });

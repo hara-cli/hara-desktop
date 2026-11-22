@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { binarySHA, readWindowsVaultBinding, verifyWindowsVaultSidecar, windowsVaultRequired } from "./windows-vault-bundle.mjs";
 import { assertNoLegacyMsi, installedBinaries, installNsis, withMsiInstallation } from "./windows-install-layout.mjs";
-import { SmokeProcessError, smokeRuntime } from "./windows-install-process.mjs";
+import { SmokeProcessError, observeCoreIdentity, smokeRuntime, verifyIdentity } from "./windows-install-process.mjs";
 import { SmokeError, check, origin, withWorkspace } from "./windows-install-workspace.mjs";
 
 const model = "hara-vault-smoke-model";
@@ -31,10 +31,8 @@ async function identify(runtime, kind, pid, options = {}) {
   return row;
 }
 
-const nativePath = path => realpathSync.native(path).toLowerCase();
-function verifyIdentity(row, expectedPath, startTime) {
-  check(row && nativePath(row.ExecutablePath) === nativePath(expectedPath)
-    && (startTime === undefined || row.Started === startTime), "Smoke process identity changed");
+function readDiscovery(path) {
+  try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
 async function start(runtime, kind, root, home, { previousInstance, direct = false } = {}) {
@@ -94,21 +92,29 @@ async function start(runtime, kind, root, home, { previousInstance, direct = fal
       verifyIdentity(owner, executable);
     }, { until: deadline });
     return await runtime.phase(kind, "core.ready", async () => {
+      const pendingOutcomes = new Set();
       while (runtime.remaining({ until: deadline }) && !launchError && running()) {
-        let record;
-        try { record = JSON.parse(readFileSync(discovery, "utf8")); } catch { /* File not yet published. */ }
+        const record = readDiscovery(discovery);
         if (record && record.instanceId !== previousInstance) {
           check(record.schemaVersion === 2 && record.executionMode === "workspace" && typeof record.instanceId === "string"
             && /^[a-f0-9]{64}$/u.test(record.token) && Number.isSafeInteger(record.port) && record.port > 0 && record.port < 65536,
           "Invalid Workspace discovery");
-          if (direct) check(record.pid === child.pid, "Discovery PID did not match the directly launched Core");
-          else {
-            const row = await identify(runtime, kind, record.pid, { until: deadline });
-            verifyIdentity(row, core);
-            check(row.ParentProcessId === child.pid, "The discovered Core is not the installed Desktop's adjacent child");
-            ownedCore = row;
+          if (direct) {
+            check(record.pid === child.pid, "Discovery PID did not match the directly launched Core");
+            return { record, stop };
           }
-          return { record, stop };
+          const row = await identify(runtime, kind, record.pid, { until: deadline });
+          const observed = observeCoreIdentity(record, readDiscovery(discovery), row, core, child.pid);
+          if (observed.row) {
+            ownedCore = observed.row;
+            if (!runtime.remaining({ until: deadline })) throw new SmokeProcessError("timeout");
+            if (launchError || !running()) break;
+            return { record, stop };
+          }
+          if (!pendingOutcomes.has(observed.outcome)) {
+            pendingOutcomes.add(observed.outcome);
+            writeSync(process.stdout.fd, JSON.stringify({ stage: "core.identity", installerKind: kind, outcome: observed.outcome }) + "\n");
+          }
         }
         await wait(Math.min(400, runtime.remaining({ until: deadline })));
       }
