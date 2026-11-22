@@ -269,6 +269,32 @@ export function AssistantDraft({ model, t, follow }: { model: WorkspaceDevModel;
 }
 const emptyWaitTimingSnapshot = () => null;
 
+export function WorkspaceChatEmptyState({ agent, t, onDiscuss, onAskAboutTasks }: {
+  agent?: Pick<WorkspaceDevAgent, "kind" | "identity">;
+  t: Translate;
+  onDiscuss(): void;
+  onAskAboutTasks(): void;
+}) {
+  if (agent && agent.kind !== "main") {
+    const name = agent.identity.displayName;
+    const role = agent.identity.title?.trim();
+    return <div className="hs-hello">
+      <h2>{t("ws.home.colleague.title", { name })}</h2>
+      <p>{role ? t("ws.home.colleague.hint", { name, role }) : t("ws.home.colleague.hintNoRole", { name })}</p>
+    </div>;
+  }
+
+  return <div className="hs-hello">
+    <HaraMascot state="idle" size={128} label={t("ws.mascot.idle")} />
+    <h2>{t("ws.home.title")}</h2>
+    <p>{t("ws.home.hint")}</p>
+    <div className="hs-chips">
+      <button className="hs-chip" onClick={onDiscuss}><UserPlusIcon className="hico" />{t("ws.home.chip.colleague")}</button>
+      <button className="hs-chip" onClick={onAskAboutTasks}>{t("ws.home.chip.tasks")}</button>
+    </div>
+  </div>;
+}
+
 export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
   mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
   const rawView = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -717,8 +743,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {onboarding.surface === "resume" && onboarding.progress && (!agent || agent.kind === "main") ? <OnboardingResumeCard progress={onboarding.progress} notice={onboarding.notice} onContinue={onboarding.open} onStop={onboarding.stop} /> : null}
             {!hasConnection ? <section className="wsd-connect-card"><h2>{t("ws.connection.title")}</h2><p>{t(production ? "ws.connection.body" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</p>
               <button className="hs-btn pri" onClick={() => void connect()}>{t(production ? "ws.connection.configure" : realKey ? "ws.connection.approved" : "ws.connection.synthetic")}</button></section> : null}
-            {hasConnection && !workspace.conversation.history.length ? <div className="hs-hello">{!agent || agent.kind === "main" ? <HaraMascot state="idle" size={128} label={t("ws.mascot.idle")} /> : null}<h2>{t("ws.home.title")}</h2><p>{t("ws.home.hint")}</p><div className="hs-chips"><button className="hs-chip" onClick={() => void discuss()}><UserPlusIcon className="hico" />{t("ws.home.chip.colleague")}</button>
-              <button className="hs-chip" onClick={() => model.setDraft(t("ws.home.chip.tasks"))}>{t("ws.home.chip.tasks")}</button></div></div> : null}
+            {hasConnection && !workspace.conversation.history.length ? <WorkspaceChatEmptyState agent={agent} t={t}
+              onDiscuss={() => void discuss()} onAskAboutTasks={() => model.setDraft(t("ws.home.chip.tasks"))} /> : null}
             {workspace.conversation.nativeRisks?.length ? <aside className="wsd-notice" aria-label={t("ws.permissions.risks")}>
               <strong>{t("ws.permissions.risks")}</strong><ul>{workspace.conversation.nativeRisks.map(event => <li key={event.id}>{t(event.kind === "external-publish" ? "ws.permissions.publish" : "ws.permissions.delete")} · {t("ws.permissions.observed")}</li>)}</ul>
             </aside> : null}
