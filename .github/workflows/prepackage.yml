@@ -122,6 +122,10 @@ jobs:
             target: x86_64-apple-darwin
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
+            installer_smoke: --msi-only
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            installer_smoke: --nsis-only
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.platform }}
@@ -323,11 +327,21 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --lib --locked `
             windows_workspace_root_tests::real_sidecar_workspace_startup -- --ignored --test-threads=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Windows post-install Workspace smoke
-        if: matrix.target == 'x86_64-pc-windows-msvc'
+      - name: Windows MSI registry preflight (prepackage only)
+        if: matrix.installer_smoke == '--msi-only'
+        timeout-minutes: 2
+        shell: bash
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-msi-preflight" --msi-precheck-only
+      - name: Windows MSI post-install Workspace smoke and uninstall readback
+        if: matrix.installer_smoke == '--msi-only'
         timeout-minutes: 12
         shell: bash
-        run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-smoke"
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-msi-smoke" --msi-only
+      - name: Windows NSIS post-install Workspace smoke
+        if: matrix.installer_smoke == '--nsis-only'
+        timeout-minutes: 12
+        shell: bash
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-nsis-smoke" --nsis-only
 
   signer_path:
     # The protected signer runs `HARA_RELEASE_BUILD=1 refresh-sidecar.sh` and then requires an

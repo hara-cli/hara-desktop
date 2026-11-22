@@ -5,14 +5,16 @@ import { SmokeError, check } from "./windows-install-workspace.mjs";
 
 const commandLimits = new Map([
   ["git.head", 10_000], ["worker.empty_input", 10_000],
-  ["msi.precheck", 30_000], ["msi.layout", 30_000], ["msi.removal_check", 30_000], ["nsis.migration_check", 30_000],
+  ["msi.precheck", 30_000], ["msi.layout", 30_000], ["msi.removal_check", 30_000],
+  ["msi.migration_removal_check", 30_000], ["nsis.migration_check", 30_000],
   ["msi.install", 120_000], ["msi.uninstall", 120_000], ["nsis.install", 120_000], ["nsis.uninstall", 120_000],
   ["process.identify", 15_000], ["process.stop", 15_000], ["vault.app_data", 15_000],
 ]);
 const phases = new Set([...commandLimits.keys(), "smoke", "desktop.start", "core.ready", "desktop.stop",
   "vault.save", "vault.restart", "vault.rotate", "http.listen", "http.close", "nsis.removal_check",
   "refusal.helper_invalid", "refusal.helper_missing", "refusal.windows_desktop_required"]);
-const notices = new Set(["smoke", "msi.precheck", "msi.install", "msi.uninstall", "msi.removal_check", "nsis.migration_check", "nsis.install", "nsis.uninstall"]);
+const notices = new Set(["smoke", "msi.precheck", "msi.install", "msi.uninstall", "msi.removal_check", "msi.migration_removal_check",
+  "nsis.migration_check", "nsis.install", "nsis.uninstall"]);
 const outcomes = new Set(["ok", "failed", "timeout", "spawn_failed", "nonzero", "exit_unconfirmed", "output_limit"]);
 const exitGrace = 3_000;
 const capturedLimit = 64 * 1024;
