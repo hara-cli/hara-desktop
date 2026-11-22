@@ -7,7 +7,8 @@ import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { binarySHA, readWindowsVaultBinding, verifyWindowsVaultSidecar, windowsVaultRequired } from "./windows-vault-bundle.mjs";
-import { assertNoLegacyMsi, installedBinaries, installNsis, withMsiInstallation } from "./windows-install-layout.mjs";
+import { assertMsiRegistrationClear, assertNoLegacyMsi, installedBinaries, installNsis, windowsSmokeInstallers,
+  withMsiInstallation } from "./windows-install-layout.mjs";
 import { SmokeProcessError, observeCoreIdentity, smokeRuntime, verifyIdentity } from "./windows-install-process.mjs";
 import { SmokeError, check, origin, withWorkspace } from "./windows-install-workspace.mjs";
 
@@ -260,7 +261,8 @@ async function verifyCredentialRefusal(runtime, installed, profile, reason, bind
 async function main([releaseBase, output, mode]) {
   check(process.platform === "win32" && process.env.GITHUB_ACTIONS === "true" && process.env.RUNNER_ENVIRONMENT === "github-hosted"
     && process.env.RUNNER_TEMP && process.env.USERPROFILE, "GitHub-hosted Windows runner only");
-  check(releaseBase && output && (mode === undefined || mode === "--release-only"), "Invalid Windows install smoke arguments");
+  check(releaseBase && output && (mode === undefined || ["--release-only", "--msi-only", "--nsis-only", "--msi-precheck-only"].includes(mode)),
+    "Invalid Windows install smoke arguments");
   mkdirSync(output, { recursive: true });
   const receiptPath = join(output, "windows-install-smoke.json");
   // One smoke invocation owns this runner output. Clear previous run files before publishing.
@@ -280,7 +282,14 @@ async function main([releaseBase, output, mode]) {
   try {
     await runtime.phase("none", "smoke", async () => {
       const required = windowsVaultRequired();
-      if (!required && mode === "--release-only") return;
+      const kinds = windowsSmokeInstallers(required, mode);
+      if (!kinds.length) return;
+      if (mode === "--msi-precheck-only") {
+        installerKind = "msi";
+        scenario = "precheck";
+        await assertMsiRegistrationClear(installer(resolve(releaseBase), "msi"), runtime);
+        return;
+      }
       // prepackage may check out a commit different from GITHUB_SHA.
       const { stdout } = await runtime.command("none", "git.head", "git", ["rev-parse", "HEAD"], { capture: true });
       const desktopCommit = stdout.trim();
@@ -290,7 +299,7 @@ async function main([releaseBase, output, mode]) {
       result.coreCommit = receipt?.coreCommit ?? null;
       const profile = mkdtempSync(join(process.env.USERPROFILE, "hara-install-smoke-"));
       const msiArtifact = required ? installer(resolve(releaseBase), "msi") : null;
-      for (const kind of required ? ["msi", "nsis"] : ["nsis"]) {
+      for (const kind of kinds) {
         check(runtime.remaining() > 0, "smoke_budget_exhausted");
         installerKind = kind;
         scenario = "installed";
@@ -325,7 +334,7 @@ async function main([releaseBase, output, mode]) {
         };
 
         if (kind === "msi") {
-          await withMsiInstallation(artifact, root, installation, exercise, { runtime });
+          await withMsiInstallation(artifact, root, installation, exercise, { runtime, mode });
         } else {
           if (msiArtifact) await assertNoLegacyMsi(msiArtifact, runtime);
           const uninstall = await installNsis(runtime, artifact, root, profile);
