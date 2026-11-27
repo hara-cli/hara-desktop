@@ -251,7 +251,7 @@ jobs:
         id: source_pack_upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-source-packs
+          name: release-source-packs-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-source-packs/*
           if-no-files-found: error
           retention-days: 7
@@ -318,6 +318,11 @@ jobs:
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 120
+    # Only the Windows child writes these keys. GitHub omits empty matrix output values.
+    outputs:
+      windows_transfer_id: ${{ steps.windows_transfer.outputs.artifact-id }}
+      windows_transfer_sha256: ${{ steps.windows_transfer.outputs.artifact-digest }}
+      windows_manifest_sha256: ${{ steps.windows_manifest.outputs.manifest_sha256 }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
@@ -486,12 +491,26 @@ jobs:
         env:
           TAURI_TARGET: ${{ matrix.target }}
         run: node scripts/package-smoke.mjs
-      - name: Windows post-install Workspace smoke
+      - name: Stage exact Windows install transfer after package smoke
         if: matrix.target == 'x86_64-pc-windows-msvc'
-        timeout-minutes: 12
+        id: windows_manifest
         shell: bash
-        run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-smoke" --release-only
+        env:
+          WINDOWS_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
+          WINDOWS_CORE_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
+          WINDOWS_RELEASE_ONLY: "true"
+        run: node scripts/windows-install-transfer.mjs pack
+      - name: Upload exact Windows install transfer for both installer jobs
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        id: windows_transfer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-install-transfer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-install-transfer/
+          if-no-files-found: error
+          retention-days: 1
       - name: Collect canonical release assets after smoke
+        if: matrix.target != 'x86_64-pc-windows-msvc'
         shell: bash
         run: >-
           node scripts/collect-release-assets.mjs
@@ -500,16 +519,92 @@ jobs:
           "${{ needs.prepare_release.outputs.desktop_sha }}"
           "${{ needs.prepare_release.outputs.cli_sha }}"
       - name: Upload verified matrix assets for single-writer assembly
+        if: matrix.target != 'x86_64-pc-windows-msvc'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-assets-${{ matrix.target }}
+          name: release-assets-${{ matrix.target }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-assets-${{ matrix.target }}/*
+          if-no-files-found: error
+          retention-days: 7
+
+  windows_install:
+    name: Verify the same Windows packages on separate hosted VMs
+    needs: [prepare_release, build]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/windows-install-smoke.yml
+    with:
+      desktop_sha: ${{ needs.prepare_release.outputs.desktop_sha }}
+      core_sha: ${{ needs.prepare_release.outputs.cli_sha }}
+      transfer_id: ${{ needs.build.outputs.windows_transfer_id }}
+      transfer_sha256: ${{ needs.build.outputs.windows_transfer_sha256 }}
+      manifest_sha256: ${{ needs.build.outputs.windows_manifest_sha256 }}
+      release_only: true
+
+  collect_windows_assets:
+    name: Collect Windows release assets after both installer jobs pass
+    needs: [prepare_release, build, windows_install]
+    permissions:
+      contents: read
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      WINDOWS_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
+      WINDOWS_CORE_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
+      WINDOWS_TRANSFER_ID: ${{ needs.build.outputs.windows_transfer_id }}
+      WINDOWS_TRANSFER_SHA256: ${{ needs.build.outputs.windows_transfer_sha256 }}
+      WINDOWS_MANIFEST_SHA256: ${{ needs.build.outputs.windows_manifest_sha256 }}
+      WINDOWS_RELEASE_ONLY: "true"
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ needs.prepare_release.outputs.desktop_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
+          targets: x86_64-pc-windows-msvc
+      - name: Require an exact transfer identity
+        shell: bash
+        run: |
+          [[ "$WINDOWS_TRANSFER_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+          [[ "$WINDOWS_TRANSFER_SHA256" =~ ^[a-f0-9]{64}$ && "$WINDOWS_MANIFEST_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 1
+      - name: Download exact Windows install transfer ZIP
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          artifact-ids: ${{ needs.build.outputs.windows_transfer_id }}
+          path: ${{ runner.temp }}/windows-install-zip
+          skip-decompress: true
+          digest-mismatch: error
+      - name: Rehash and stage the already-verified installers and signatures
+        shell: bash
+        run: node scripts/windows-install-transfer.mjs stage-collect
+      - name: Build the existing updater signature verifier on this fresh VM
+        timeout-minutes: 25
+        shell: bash
+        run: cargo build --quiet --locked --manifest-path src-tauri/Cargo.toml --example verify_updater_signature
+      - name: Collect canonical release assets after smoke
+        shell: bash
+        run: >-
+          node scripts/collect-release-assets.mjs
+          "x86_64-pc-windows-msvc"
+          "$RUNNER_TEMP/release-assets-x86_64-pc-windows-msvc"
+          "${{ needs.prepare_release.outputs.desktop_sha }}"
+          "${{ needs.prepare_release.outputs.cli_sha }}"
+      - name: Upload verified matrix assets for single-writer assembly
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets-x86_64-pc-windows-msvc-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-assets-x86_64-pc-windows-msvc/*
           if-no-files-found: error
           retention-days: 7
 
   assemble_draft:
     name: Assemble verified hidden draft (do not publish unsigned macOS assets)
-    needs: [prepare_release, build, create_draft]
+    needs: [prepare_release, build, collect_windows_assets, create_draft]
     permissions:
       actions: read
       contents: write
@@ -532,7 +627,7 @@ jobs:
       - name: Download all verified matrix assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: release-assets-*
+          pattern: release-assets-*-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-assets
           merge-multiple: true
       - name: Build exact updater manifest once

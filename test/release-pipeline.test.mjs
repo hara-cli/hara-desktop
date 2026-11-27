@@ -1441,6 +1441,7 @@ test("every release job and installer extraction has a finite timeout", () => {
     "prepare_release",
     "create_draft",
     "build",
+    "collect_windows_assets",
     "assemble_draft",
     "promotion_preflight",
     "sign_and_promote",
@@ -1483,7 +1484,7 @@ test("tag workflow automatically enters the protected promotion job under one co
   );
   assert.match(
     buildWorkflow,
-    /assemble_draft:\n[\s\S]*?needs: \[prepare_release, build, create_draft\]/,
+    /assemble_draft:\n[\s\S]*?needs: \[prepare_release, build, collect_windows_assets, create_draft\]/,
   );
   assert.match(buildWorkflow, /environment:\s+name: hara-desktop-production/);
   assert.match(buildWorkflow, /runs-on: \[self-hosted, macOS, ARM64, hara-desktop-release\]/);

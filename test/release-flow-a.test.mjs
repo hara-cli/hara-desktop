@@ -31,12 +31,13 @@ function stepName(step) {
   return (match[1] ?? match[2]).trim();
 }
 
-const releaseBuild = job(build, "build", "assemble_draft");
+const releaseBuild = job(build, "build", "windows_install");
 const releasePrepare = job(build, "prepare_release", "create_draft");
 const signJob = job(build, "sign_and_promote", "verify_public_release");
 const rehearsalPrepare = job(prepackage, "prepare_release", "build");
-const rehearsalBuild = job(prepackage, "build", "signer_path");
+const rehearsalBuild = job(prepackage, "build", "windows_install");
 const rehearsalSigner = job(prepackage, "signer_path", "merge_metadata_path");
+const windowsInstaller = readFileSync(join(root, ".github/workflows/windows-install-smoke.yml"), "utf8");
 
 test("prepackage copies build.yml's package matrix and differs only in the reviewed places", () => {
   const omitted = new Set([
@@ -56,9 +57,13 @@ test("prepackage copies build.yml's package matrix and differs only in the revie
       'git -C "$CLI_DIR" fetch --quiet --depth 1 origin "refs/tags/v${CLI_VERSION}"',
       'git -C "$CLI_DIR" fetch --quiet --depth 1 origin "$CLI_SHA"',
     ]],
-    ["Windows post-install Workspace smoke", [
-      '"$RUNNER_TEMP/windows-install-smoke" --release-only',
-      '"$RUNNER_TEMP/windows-install-smoke"',
+    ["Stage exact Windows install transfer after package smoke", [
+      'WINDOWS_RELEASE_ONLY: "true"',
+      'WINDOWS_RELEASE_ONLY: "false"',
+    ]],
+    ["Upload exact Windows install transfer for both installer jobs", [
+      "          retention-days: 1\n",
+      "          retention-days: 7\n",
     ]],
     ["Build local packages (no release API access)", [
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.HARA_TAURI_SIGNING_PRIVATE_KEY }}",
@@ -115,11 +120,67 @@ test("prepackage is dispatch-only, hosted-only and cannot read secrets or write"
   assert.doesNotMatch(prepackage, /:\s*write\b/);
   assert.doesNotMatch(prepackage, /^\s+environment:/m);
   assert.doesNotMatch(prepackage, /self-hosted|hara-desktop-release/);
-  assert.doesNotMatch(prepackage, /gh release |upload-artifact|api\.github\.com\/repos\/[^\n]*\/releases/);
+  assert.doesNotMatch(prepackage, /gh release |api\.github\.com\/repos\/[^\n]*\/releases/);
+  const uploads = steps(rehearsalBuild).filter((step) => step.includes("actions/upload-artifact@"));
+  assert.equal(uploads.length, 1);
+  assert.equal(stepName(uploads[0]), "Upload exact Windows install transfer for both installer jobs");
+  assert.match(uploads[0], /name: windows-install-transfer-/);
+  assert.doesNotMatch(prepackage, /release-assets-|secrets:\s*inherit/);
   assert.match(rehearsalPrepare, /\[ "\$INPUT_SHA" = "\$GITHUB_SHA" \]/);
   assert.match(rehearsalPrepare, /ref: \$\{\{ inputs\.sha \}\}/);
   assert.match(rehearsalBuild, /signer generate --ci -p "" -w "\$KEY"/);
   assert.match(rehearsalBuild, /echo "::add-mask::\$VALUE"/);
+});
+
+test("Windows jobs receive one immutable transfer and production collection waits for both", () => {
+  assert.match(windowsInstaller, /^on:\n  workflow_call:\n/m);
+  assert.match(windowsInstaller, /^permissions:\n  contents: read\n/m);
+  assert.match(windowsInstaller, /fail-fast: false\n\s+matrix:\n\s+installer: \[msi, nsis\]/);
+  assert.match(windowsInstaller, /artifact-ids: \$\{\{ inputs\.transfer_id \}\}/);
+  assert.match(windowsInstaller, /skip-decompress: true\n\s+digest-mismatch: error/);
+  assert.doesNotMatch(windowsInstaller, /secrets\.|environment:|release-assets-/);
+  assert.ok(windowsInstaller.indexOf("preflight and transfer proof") < windowsInstaller.indexOf("Verify installed credentials"));
+
+  const formal = job(build, "windows_install", "collect_windows_assets");
+  const rehearsal = job(prepackage, "windows_install", "signer_path");
+  assert.equal(rehearsal, formal.replace("release_only: true", "release_only: false"));
+  assert.match(formal, /needs: \[prepare_release, build\]/);
+  assert.match(formal, /uses: \.\/\.github\/workflows\/windows-install-smoke\.yml/);
+  for (const suffix of ["id", "sha256"]) {
+    assert.ok(formal.includes(`transfer_${suffix}: \${{ needs.build.outputs.windows_transfer_${suffix} }}`));
+  }
+  assert.match(formal, /manifest_sha256: \$\{\{ needs.build.outputs.windows_manifest_sha256 \}\}/);
+
+  const collect = job(build, "collect_windows_assets", "assemble_draft");
+  const assemble = job(build, "assemble_draft", "promotion_preflight");
+  assert.match(collect, /needs: \[prepare_release, build, windows_install\]/);
+  assert.match(collect, /artifact-ids: \$\{\{ needs.build.outputs.windows_transfer_id \}\}/);
+  assert.match(collect, /node scripts\/collect-release-assets\.mjs/);
+  assert.doesNotMatch(collect, /continue-on-error|always\(\)|secrets\.|tauri build/);
+  assert.match(assemble, /needs: \[prepare_release, build, collect_windows_assets, create_draft\]/);
+  assert.match(signJob, /needs: \[prepare_release, create_draft, assemble_draft, promotion_preflight\]/);
+});
+
+test("a full rerun uses fresh artifact names and assembles only the current attempt", () => {
+  const suffix = "-attempt-${{ github.run_attempt }}";
+  const collect = job(build, "collect_windows_assets", "assemble_draft");
+  const assemble = job(build, "assemble_draft", "promotion_preflight");
+  assert.ok(releasePrepare.includes(`name: release-source-packs${suffix}\n`));
+  assert.ok(releaseBuild.includes("name: release-assets-${{ matrix.target }}" + suffix + "\n"));
+  assert.ok(collect.includes(`name: release-assets-x86_64-pc-windows-msvc${suffix}\n`));
+  assert.ok(assemble.includes(`pattern: release-assets-*${suffix}\n`));
+  for (const block of [releasePrepare, releaseBuild, collect]) assert.doesNotMatch(block, /overwrite:\s*true/);
+});
+
+test("only the formal Windows install transfer expires after one day", () => {
+  const name = "Upload exact Windows install transfer for both installer jobs";
+  const formal = steps(releaseBuild).find((step) => stepName(step) === name);
+  const rehearsal = steps(rehearsalBuild).find((step) => stepName(step) === name);
+  assert.match(formal, /^          retention-days: 1$/m);
+  assert.match(rehearsal, /^          retention-days: 7$/m);
+  const receipts = windowsInstaller.match(/^          retention-days: 7$/gm);
+  assert.equal(receipts?.length, 2);
+  assert.doesNotMatch(releaseBuild, /actions:\s+write|actions\/artifacts\/.*DELETE/);
 });
 
 test("the signer pins source trees from the prepare job and never downloads code over HTTPS", () => {

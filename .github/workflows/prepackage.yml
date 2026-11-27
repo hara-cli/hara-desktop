@@ -4,7 +4,7 @@
 # Release. The build steps are copied from build.yml and test/release-flow-a.test.mjs fails if
 # they drift; the only intended differences are the throwaway updater key, fetching the pinned
 # Core commit by SHA (its stable tag is created after this rehearsal), and omitting the
-# release-assembly steps.
+# release-assembly and Windows release-asset collection steps.
 name: prepackage
 
 on:
@@ -126,6 +126,11 @@ jobs:
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 120
+    # Only the Windows child writes these keys. GitHub omits empty matrix output values.
+    outputs:
+      windows_transfer_id: ${{ steps.windows_transfer.outputs.artifact-id }}
+      windows_transfer_sha256: ${{ steps.windows_transfer.outputs.artifact-digest }}
+      windows_manifest_sha256: ${{ steps.windows_manifest.outputs.manifest_sha256 }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
@@ -323,11 +328,38 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --lib --locked `
             windows_workspace_root_tests::real_sidecar_workspace_startup -- --ignored --test-threads=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Windows post-install Workspace smoke
+      - name: Stage exact Windows install transfer after package smoke
         if: matrix.target == 'x86_64-pc-windows-msvc'
-        timeout-minutes: 12
+        id: windows_manifest
         shell: bash
-        run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-smoke"
+        env:
+          WINDOWS_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
+          WINDOWS_CORE_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
+          WINDOWS_RELEASE_ONLY: "false"
+        run: node scripts/windows-install-transfer.mjs pack
+      - name: Upload exact Windows install transfer for both installer jobs
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        id: windows_transfer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-install-transfer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-install-transfer/
+          if-no-files-found: error
+          retention-days: 7
+
+  windows_install:
+    name: Verify the same Windows packages on separate hosted VMs
+    needs: [prepare_release, build]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/windows-install-smoke.yml
+    with:
+      desktop_sha: ${{ needs.prepare_release.outputs.desktop_sha }}
+      core_sha: ${{ needs.prepare_release.outputs.cli_sha }}
+      transfer_id: ${{ needs.build.outputs.windows_transfer_id }}
+      transfer_sha256: ${{ needs.build.outputs.windows_transfer_sha256 }}
+      manifest_sha256: ${{ needs.build.outputs.windows_manifest_sha256 }}
+      release_only: false
 
   signer_path:
     # The protected signer runs `HARA_RELEASE_BUILD=1 refresh-sidecar.sh` and then requires an
