@@ -74,9 +74,10 @@ if ($null -ne $key) {
 `;
 
 async function readMsiRegistration(artifact, runtime, operation, cleanup = false) {
-  const migration = operation === "nsis.migration_check";
+  const nsis = operation === "nsis.migration_check";
+  const migration = nsis || operation === "msi.migration_removal_check";
   const encoded = Buffer.from(readRegistrationScript, "utf16le").toString("base64");
-  const { stdout } = await runtime.command(migration ? "nsis" : "msi", operation, "powershell.exe",
+  const { stdout } = await runtime.command(nsis ? "nsis" : "msi", operation, "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], {
       env: { ...process.env, HARA_INSTALL_SMOKE_MSI_PATH: artifact, HARA_INSTALL_SMOKE_MSI_QUERY: migration ? "migration" : "layout" },
       cleanup, capture: true,
@@ -89,6 +90,30 @@ export async function assertNoLegacyMsi(artifact, runtime, read = readMsiRegistr
   const result = await read(artifact, runtime, "nsis.migration_check");
   if (typeof result?.legacyMsiPresent !== "boolean") throw new SmokeError("nsis_migration_registration_unavailable");
   if (result.legacyMsiPresent) throw new SmokeError("nsis_legacy_msi_present");
+}
+
+export function windowsSmokeInstallers(required, mode) {
+  if (mode === undefined) return required ? ["msi", "nsis"] : ["nsis"];
+  if (mode === "--release-only") return required ? ["msi", "nsis"] : [];
+  check(required, "Split installer smoke requires Windows credential storage");
+  if (mode === "--nsis-only" || mode === "--nsis-precheck-only") return ["nsis"];
+  if (mode === "--msi-only" || mode === "--msi-precheck-only") return ["msi"];
+  throw new SmokeError("Invalid Windows install smoke arguments");
+}
+
+function validMsiRegistration(state) {
+  return Number.isInteger(state?.productState) && typeof state.defaultPresent === "boolean"
+    && typeof state.installDirPresent === "boolean";
+}
+
+function msiRegistrationClear(state) {
+  return state.productState === -1 && !state.defaultPresent && !state.installDirPresent;
+}
+
+export async function assertMsiRegistrationClear(artifact, runtime, read = readMsiRegistration) {
+  const state = await read(artifact, runtime, "msi.precheck");
+  check(validMsiRegistration(state), "msi_registration_unavailable");
+  check(msiRegistrationClear(state), "msi_preexisting_registration");
 }
 
 async function runMsi(action, artifact, root, runtime) {
@@ -148,12 +173,13 @@ export async function installNsis(runtime, artifact, dest, profile) {
 }
 
 export async function withMsiInstallation(artifact, root, observation, exercise, {
-  runtime, readRegistration = readMsiRegistration, invoke = runMsi, binaries = installedBinaries,
+  runtime, readRegistration = readMsiRegistration, invoke = runMsi, binaries = installedBinaries, mode,
 } = {}) {
   Object.assign(observation, {
     registrationClearBefore: null, installExitCode: null, directory: null,
     uninstallExitCode: null, registrationClearAfter: null, reason: null, cleanupReason: null,
   });
+  if (mode === "--msi-only") observation.legacyMsiClearAfter = null;
   const require = (condition, reason, field = "reason") => {
     if (condition) return;
     observation[field] = reason;
@@ -161,18 +187,15 @@ export async function withMsiInstallation(artifact, root, observation, exercise,
   };
   const read = async (operation, field) => {
     const state = await readRegistration(artifact, runtime, operation, field === "cleanupReason");
-    require(Number.isInteger(state?.productState) && typeof state.defaultPresent === "boolean"
-      && typeof state.installDirPresent === "boolean", "msi_registration_unavailable", field);
+    require(validMsiRegistration(state), "msi_registration_unavailable", field);
     return state;
   };
   const exitCode = async action => {
     const value = await invoke(action, artifact, root, runtime);
     return Number.isSafeInteger(value) ? value : null;
   };
-  const clear = state => state.productState === -1 && !state.defaultPresent && !state.installDirPresent;
-
   require(!existsSync(root), "msi_destination_exists");
-  observation.registrationClearBefore = clear(await read("msi.precheck"));
+  observation.registrationClearBefore = msiRegistrationClear(await read("msi.precheck"));
   require(observation.registrationClearBefore, "msi_preexisting_registration");
   const status = observation.installExitCode = await exitCode("/i");
   require(status === 0 || status === 3010, "msi_install_failed");
@@ -194,8 +217,21 @@ export async function withMsiInstallation(artifact, root, observation, exercise,
       const status = observation.uninstallExitCode = await exitCode("/x");
       require(status !== 3010, "msi_reboot_required", "cleanupReason");
       require(status === 0, "msi_uninstall_failed", "cleanupReason");
-      observation.registrationClearAfter = clear(await read("msi.removal_check", "cleanupReason"));
+      observation.registrationClearAfter = msiRegistrationClear(await read("msi.removal_check", "cleanupReason"));
       require(observation.registrationClearAfter, "msi_residue_before_nsis", "cleanupReason");
+      if (mode === "--msi-only") {
+        // The NSIS leg uses a different VM. Keep the migration gate on the MSI VM as well.
+        let migration;
+        try {
+          migration = await readRegistration(artifact, runtime, "msi.migration_removal_check", true);
+        } catch (error) {
+          observation.cleanupReason = "msi_legacy_registration_unavailable";
+          throw error;
+        }
+        require(typeof migration?.legacyMsiPresent === "boolean", "msi_legacy_registration_unavailable", "cleanupReason");
+        observation.legacyMsiClearAfter = !migration.legacyMsiPresent;
+        require(observation.legacyMsiClearAfter, "msi_legacy_registration_remaining", "cleanupReason");
+      }
     } catch (error) {
       // The receipt records cleanup failure too. Preserve the original failure when there is one.
       if (!failed) throw error;

@@ -1,0 +1,380 @@
+name: Desk 1.3.0 Windows split diagnosis
+
+on:
+  push:
+    branches: [probe/desk-130-windows-split-20261128]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desk-a2-windows-split-20261128
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: v1.3.0
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+  NPM_CONFIG_REPLACE_REGISTRY_HOST: always
+  BUN_WINDOWS_BASELINE_SHA256: "39f12024edc27d3706baa7b72a06156896b536af61472e0f9a6fe9c5e25b97cc"
+
+jobs:
+  build_windows:
+    name: Build the exact D Windows packages
+    if: github.repository == 'hara-cli/hara-desktop' && github.event.created && !github.event.deleted && !github.event.forced && github.run_attempt == '1'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      archive_sha256: ${{ steps.upload.outputs.artifact-digest }}
+      manifest_sha256: ${{ steps.pack.outputs.manifest_sha256 }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: 19662f8206d23e2cac9098c0f8a03add8c71b567
+          persist-credentials: false
+      - name: Verify exact D and load probe code outside the build tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          head=$(git rev-parse HEAD)
+          tree=$(git rev-parse 'HEAD^{tree}')
+          dirty=$(git status --porcelain --untracked-files=all)
+          [[ "$head" == 19662f8206d23e2cac9098c0f8a03add8c71b567 && "$tree" == 6dbb209e15f3a2cc80744351ec8f25268aa5a2c3 && -z "$dirty" ]] || exit 1
+          core=$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_COMMIT)
+          [[ "$core" == 25276907b92393a117e5518a51b47bdb5a34ec5e ]] || exit 1
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git fetch --quiet --no-tags --depth=1 https://github.com/hara-cli/hara-desktop.git "$GITHUB_SHA"
+          fetched=$(git rev-parse 'FETCH_HEAD^{commit}')
+          [[ "$fetched" == "$GITHUB_SHA" ]] || exit 1
+          git show "$fetched:scripts/desk-a2-windows-probe.mjs" > "$RUNNER_TEMP/desk-a2-windows-probe.mjs"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
+          targets: x86_64-pc-windows-msvc
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.0.2
+        with:
+          bun-version-file: .bun-version
+          bun-download-url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.9/bun-windows-x64-baseline.zip
+      - name: Verify pinned Windows baseline Bun bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA256="$(sha256sum "$(command -v bun)" | awk '{print $1}')"
+          [ "$ACTUAL_SHA256" = "$BUN_WINDOWS_BASELINE_SHA256" ] || {
+            echo "Windows baseline Bun digest mismatch: $ACTUAL_SHA256" >&2
+            exit 1
+          }
+      - name: Validate pinned build toolchain
+        shell: bash
+        run: bash scripts/check-build-toolchain.sh
+      - name: Validate desktop, tag, and sidecar metadata
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ env.RELEASE_TAG }}
+        run: node scripts/check-release-metadata.mjs
+      - name: Install locked Desktop dependencies with bounded registry retries
+        shell: bash
+        run: ./scripts/npm-ci-retry.sh
+      - name: Audit production dependencies with transient-only retries
+        shell: bash
+        run: ./scripts/npm-audit-retry.sh
+      - name: Build and execute-smoke pinned hara sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLI_VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/src-tauri/binaries/SIDECAR_VERSION")"
+          PINNED_CLI_VERSION="1.3.0"
+          CLI_SHA="25276907b92393a117e5518a51b47bdb5a34ec5e"
+          [ "$CLI_VERSION" = "$PINNED_CLI_VERSION" ] || {
+            echo "SIDECAR_VERSION changed after source pinning: $CLI_VERSION != $PINNED_CLI_VERSION" >&2
+            exit 1
+          }
+          [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "invalid SIDECAR_VERSION: $CLI_VERSION" >&2
+            exit 1
+          }
+          CLI_DIR="$RUNNER_TEMP/hara-cli"
+          git init --quiet "$CLI_DIR"
+          git -C "$CLI_DIR" remote add origin https://github.com/hara-cli/hara.git
+          git -C "$CLI_DIR" fetch --quiet --depth 1 origin "$CLI_SHA"
+          [ "$(git -C "$CLI_DIR" rev-parse 'FETCH_HEAD^{commit}')" = "$CLI_SHA" ] || {
+            echo "hara-cli tag moved after source pinning" >&2
+            exit 1
+          }
+          git -C "$CLI_DIR" checkout --quiet --detach "$CLI_SHA"
+          core_tree=$(git -C "$CLI_DIR" rev-parse 'HEAD^{tree}')
+          [[ "$core_tree" == a2b7149c1f53fe1d5e20bbb31e79c73d84aba272 ]] || exit 1
+          cd "$CLI_DIR"
+          [ "$(node -p 'require("./package.json").version')" = "$CLI_VERSION" ] || {
+            echo "hara-cli tag/package version mismatch" >&2
+            exit 1
+          }
+          npm ci
+          npm run build
+          node "$GITHUB_WORKSPACE/scripts/windows-vault-bundle.mjs" prepare "$CLI_SHA"
+          # D builds this alternate v2 worker on dispatch. Build the same fixture on push
+          # without changing GitHub's event identity or using an older probe's artifact.
+          ALT="$RUNNER_TEMP/hara-vault-unbound-worker"
+          mkdir "$ALT"
+          rustc +1.92.0 --edition=2021 --target=x86_64-pc-windows-msvc -C opt-level=1 \
+            -C target-feature=+crt-static -C panic=abort -C strip=symbols \
+            native/windows-credential-worker/main.rs -o "$ALT/hara-credential-worker.exe"
+          for attempt in 1 2 3; do
+            rm -f dist/bin/hara-sidecar.exe
+            if bun scripts/build-binary.ts dist/bin/hara-sidecar "" dist/cli.js desktop-sidecar; then
+              break
+            fi
+            [ "$attempt" -lt 3 ] || {
+              echo "sidecar compilation failed after $attempt attempts" >&2
+              exit 1
+            }
+            echo "sidecar compilation attempt $attempt failed; retrying a possibly incomplete Bun target download" >&2
+            sleep $((attempt * 5))
+          done
+          [ "$(git -C "$CLI_DIR" rev-parse HEAD)" = "$CLI_SHA" ] || {
+            echo "hara-cli HEAD changed while building the sidecar" >&2
+            exit 1
+          }
+          CLI_STATUS="$(git -C "$CLI_DIR" status --porcelain)"
+          [ -z "$CLI_STATUS" ] || {
+            echo "hara-cli source changed while building the sidecar" >&2
+            git -C "$CLI_DIR" status --short >&2
+            exit 1
+          }
+          node "$GITHUB_WORKSPACE/scripts/sidecar-smoke.mjs" \
+            "dist/bin/hara-sidecar.exe" "$CLI_VERSION" "x86_64-pc-windows-msvc"
+          mkdir -p "$GITHUB_WORKSPACE/src-tauri/binaries"
+          cp "dist/bin/hara-sidecar.exe" \
+            "$GITHUB_WORKSPACE/src-tauri/binaries/hara-x86_64-pc-windows-msvc.exe"
+          node "$GITHUB_WORKSPACE/scripts/windows-vault-bundle.mjs" stage "$CLI_SHA"
+          # Tauri resolves every externalBin before compilation. Hydrate the checksum-pinned Herdr
+          # runtime for this exact matrix target beside hara, rather than relying on a developer
+          # workstation artifact that is intentionally absent from the release checkout.
+          node "$GITHUB_WORKSPACE/scripts/refresh-herdr-runtime.mjs" "x86_64-pc-windows-msvc"
+          node "$GITHUB_WORKSPACE/scripts/check-runtime-distribution.mjs"
+      - name: Generate a throwaway updater key for this rehearsal
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never the release key: a fresh key that exists only on this hosted runner, so the real
+          # updater-signing and package-smoke verification path runs without any secret.
+          KEY="$RUNNER_TEMP/rehearsal-updater.key"
+          [ ! -e "$KEY" ]
+          node node_modules/@tauri-apps/cli/tauri.js signer generate --ci -p "" -w "$KEY" >/dev/null
+          node -e '
+            const fs = require("node:fs");
+            const file = "src-tauri/tauri.conf.json", conf = JSON.parse(fs.readFileSync(file, "utf8"));
+            conf.plugins.updater.pubkey = fs.readFileSync(process.argv[1], "utf8").trim();
+            fs.writeFileSync(file, JSON.stringify(conf, null, 2) + "\n");
+          ' "$KEY.pub"
+          VALUE="$(cat "$KEY")"
+          [ -n "$VALUE" ] && [ "$(printf '%s' "$VALUE" | wc -l | tr -d ' ')" = "0" ]
+          echo "::add-mask::$VALUE"
+      - name: Measure resources before packaging
+        shell: bash
+        run: node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" sample before_build
+      - name: Seal pre-build measurements
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-before-build-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/desk-a2-evidence/before_build.json
+      - name: Build local packages (no release API access)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          NO_STRIP: "true"
+        run: |
+          set -euo pipefail
+          TAURI_SIGNING_PRIVATE_KEY=$(cat "$RUNNER_TEMP/rehearsal-updater.key")
+          export TAURI_SIGNING_PRIVATE_KEY
+          node scripts/windows-vault-bundle.mjs build "x86_64-pc-windows-msvc"
+      - name: Measure resources after packaging
+        shell: bash
+        run: node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" sample after_build
+      - name: Seal post-build measurements
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-after-build-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/desk-a2-evidence/after_build.json
+      - name: Freeze installer bytes, worker binding and manifest
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun_version=$(bun --version)
+          rust_version=$(rustc --version)
+          worker_rust_version=$(rustc +1.92.0 --version)
+          export A2_BUN_VERSION="$bun_version" A2_RUST_VERSION="$rust_version" A2_WORKER_RUST_VERSION="$worker_rust_version"
+          node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" pack
+      - name: Upload one immutable payload for both legs
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-installers-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/desk-a2-payload/
+      - name: Package smoke (sidecar extracted from real installer/updater packages)
+        shell: bash
+        env:
+          TAURI_TARGET: x86_64-pc-windows-msvc
+        run: node scripts/package-smoke.mjs
+      - name: Measure resources after package extraction
+        shell: bash
+        run: node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" sample after_extract
+      - name: Seal extraction measurements
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-after-extract-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/desk-a2-evidence/after_extract.json
+      - name: Windows real-sidecar Workspace startup (prepackage only)
+        shell: pwsh
+        run: |
+          # HARA-FB-001698: Windows had never started the formal Workspace engine before a release.
+          $ErrorActionPreference = 'Stop'
+          # Keep Cargo/rustup on the runner's own Home before isolating HOME/USERPROFILE for the test.
+          if (-not $env:CARGO_HOME) { $env:CARGO_HOME = Join-Path $env:USERPROFILE '.cargo' }
+          if (-not $env:RUSTUP_HOME) { $env:RUSTUP_HOME = Join-Path $env:USERPROFILE '.rustup' }
+          $smokeHome = Join-Path $env:USERPROFILE "hara-sidecar-smoke-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory $smokeHome | Out-Null
+          New-Item -ItemType File (Join-Path $smokeHome 'hara-smoke-home.marker') | Out-Null
+          $bin = Join-Path $env:RUNNER_TEMP 'hara-smoke-bin'
+          New-Item -ItemType Directory $bin | Out-Null
+          Copy-Item "src-tauri\binaries\hara-x86_64-pc-windows-msvc.exe" (Join-Path $bin 'hara.exe')
+          $env:HOME = $smokeHome; $env:USERPROFILE = $smokeHome; $env:PATH = "$bin;$env:PATH"
+          cargo test --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --lib --locked `
+            windows_workspace_root_tests::real_sidecar_workspace_startup -- --ignored --test-threads=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Measure resources after native startup test
+        shell: bash
+        run: node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" sample after_native
+      - name: Seal native startup measurements
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-after-native-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/desk-a2-evidence/after_native.json
+
+  install_msi:
+    name: Install the same D on a fresh Windows VM (MSI)
+    needs: build_windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      A2_LEG: msi
+      A2_ARTIFACT_ID: ${{ needs.build_windows.outputs.artifact_id }}
+      A2_ARCHIVE_SHA256: ${{ needs.build_windows.outputs.archive_sha256 }}
+      A2_MANIFEST_SHA256: ${{ needs.build_windows.outputs.manifest_sha256 }}
+    steps: &install_steps
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: 19662f8206d23e2cac9098c0f8a03add8c71b567
+          persist-credentials: false
+      - name: Verify exact D and load probe code outside the build tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          head=$(git rev-parse HEAD)
+          tree=$(git rev-parse 'HEAD^{tree}')
+          dirty=$(git status --porcelain --untracked-files=all)
+          [[ "$head" == 19662f8206d23e2cac9098c0f8a03add8c71b567 && "$tree" == 6dbb209e15f3a2cc80744351ec8f25268aa5a2c3 && -z "$dirty" ]] || exit 1
+          core=$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_COMMIT)
+          [[ "$core" == 25276907b92393a117e5518a51b47bdb5a34ec5e ]] || exit 1
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git fetch --quiet --no-tags --depth=1 https://github.com/hara-cli/hara-desktop.git "$GITHUB_SHA"
+          fetched=$(git rev-parse 'FETCH_HEAD^{commit}')
+          [[ "$fetched" == "$GITHUB_SHA" ]] || exit 1
+          git show "$fetched:scripts/desk-a2-windows-probe.mjs" > "$RUNNER_TEMP/desk-a2-windows-probe.mjs"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+      - name: Load just the reviewed split-smoke scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in windows-install-smoke windows-install-layout windows-install-process; do
+            git show "$GITHUB_SHA:scripts/$file.mjs" > "scripts/$file.mjs"
+          done
+      - name: Require a single immutable artifact ID and both producer digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$A2_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+          [[ "$A2_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ && "$A2_MANIFEST_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 1
+      - name: Download the build artifact by immutable ID
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          artifact-ids: ${{ needs.build_windows.outputs.artifact_id }}
+          path: ${{ runner.temp }}/desk-a2-download
+          skip-decompress: true
+          digest-mismatch: error
+      - name: Verify ZIP digest, file manifest and worker binding
+        shell: bash
+        run: node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" receive
+      - name: Measure resources before the installer preflight
+        shell: bash
+        run: node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" sample before_install
+      - name: Run registry preflight for this VM
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/windows-install-smoke.mjs "$RUNNER_TEMP/desk-a2-payload" "$RUNNER_TEMP/desk-a2-precheck" "--${A2_LEG}-precheck-only"
+          node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" precheck-receipt
+      - name: Seal pre-install resources, payload and registry evidence before starting the installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ github.job }}-preinstall-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/desk-a2-evidence/before_install.json
+            ${{ runner.temp }}/desk-a2-evidence/received.json
+            ${{ runner.temp }}/desk-a2-evidence/precheck.json
+            ${{ runner.temp }}/desk-a2-precheck/windows-install-smoke.json
+            ${{ runner.temp }}/desk-a2-precheck/windows-install-progress.jsonl
+      - name: Verify installed credentials and uninstall on this VM
+        id: installer
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/windows-install-smoke.mjs "$RUNNER_TEMP/desk-a2-payload" "$RUNNER_TEMP/desk-a2-install" "--${A2_LEG}-only"
+          node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" install-receipt
+      - name: Measure resources after the installer returns
+        if: always() && (steps.installer.outcome == 'success' || steps.installer.outcome == 'failure')
+        shell: bash
+        run: node "$RUNNER_TEMP/desk-a2-windows-probe.mjs" sample after_install
+      - name: Seal the install receipt and stage stream
+        if: always() && (steps.installer.outcome == 'success' || steps.installer.outcome == 'failure')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ github.job }}-installed-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/desk-a2-install/windows-install-smoke.json
+            ${{ runner.temp }}/desk-a2-install/windows-install-progress.jsonl
+            ${{ runner.temp }}/desk-a2-evidence/after_install.json
+
+  install_nsis:
+    name: Install the same D on a fresh Windows VM (NSIS)
+    needs: build_windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      A2_LEG: nsis
+      A2_ARTIFACT_ID: ${{ needs.build_windows.outputs.artifact_id }}
+      A2_ARCHIVE_SHA256: ${{ needs.build_windows.outputs.archive_sha256 }}
+      A2_MANIFEST_SHA256: ${{ needs.build_windows.outputs.manifest_sha256 }}
+    steps: *install_steps

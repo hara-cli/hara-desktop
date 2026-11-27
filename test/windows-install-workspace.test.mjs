@@ -7,7 +7,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
-import { assertNoLegacyMsi, classifyMsiDirectory, installNsis, withMsiInstallation } from "../scripts/windows-install-layout.mjs";
+import { assertMsiRegistrationClear, assertNoLegacyMsi, classifyMsiDirectory, installNsis, windowsSmokeInstallers,
+  withMsiInstallation } from "../scripts/windows-install-layout.mjs";
 import { check, withWorkspace } from "../scripts/windows-install-workspace.mjs";
 
 const record = { port: 1, token: "local-fixture-token" };
@@ -293,6 +294,37 @@ function msiFixture(states, { installCode = 0, uninstallCode = 0, files = presen
   return { steps, observation, run };
 }
 
+test("rehearsal selects each installer independently and leaves formal and older defaults intact", () => {
+  assert.deepEqual(windowsSmokeInstallers(true, "--msi-precheck-only"), ["msi"]);
+  assert.deepEqual(windowsSmokeInstallers(true, "--msi-only"), ["msi"]);
+  assert.deepEqual(windowsSmokeInstallers(true, "--nsis-precheck-only"), ["nsis"]);
+  assert.deepEqual(windowsSmokeInstallers(true, "--nsis-only"), ["nsis"]);
+  assert.deepEqual(windowsSmokeInstallers(true, undefined), ["msi", "nsis"]);
+  assert.deepEqual(windowsSmokeInstallers(true, "--release-only"), ["msi", "nsis"]);
+  assert.deepEqual(windowsSmokeInstallers(false, undefined), ["nsis"]);
+  assert.deepEqual(windowsSmokeInstallers(false, "--release-only"), []);
+  for (const mode of ["--msi-precheck-only", "--msi-only", "--nsis-precheck-only", "--nsis-only"]) {
+    assert.throws(() => windowsSmokeInstallers(false, mode), /requires Windows credential storage/);
+  }
+  assert.throws(() => windowsSmokeInstallers(true, "--unexpected"), /Invalid Windows install smoke arguments/);
+});
+
+test("separate MSI preflight only reads registration and fails closed on residue or unreadable state", async () => {
+  const runtime = {};
+  const probe = state => (artifact, actualRuntime, stage) => {
+    assert.equal(artifact, "fixture.msi");
+    assert.equal(actualRuntime, runtime);
+    assert.equal(stage, "msi.precheck");
+    return state;
+  };
+  await assertMsiRegistrationClear("fixture.msi", runtime, probe(absentMsi));
+  for (const present of [{ defaultPresent: true }, { installDirPresent: true }, { productState: 5 }]) {
+    await assert.rejects(assertMsiRegistrationClear("fixture.msi", runtime, probe({ ...absentMsi, ...present })),
+      /msi_preexisting_registration/);
+  }
+  await assert.rejects(assertMsiRegistrationClear("fixture.msi", runtime, probe(null)), /msi_registration_unavailable/);
+});
+
 test("MSI install and uninstall explicitly suppress reboots with the same quiet settings", async () => {
   const calls = [], states = [absentMsi, installedMsi, absentMsi];
   const runtime = {
@@ -312,6 +344,41 @@ test("MSI install and uninstall explicitly suppress reboots with the same quiet 
     { kind: "msi", stage: "msi.uninstall", executable: "msiexec.exe", args: ["/x", ...quiet],
       options: { cleanup: true, accepted: [0, 3010] } },
   ]);
+});
+
+test("split MSI rejects a matching HKLM residue on its own VM after ProductCode and HKCU clear", async () => {
+  const operations = ["msi.precheck", "msi.layout", "msi.removal_check", "msi.migration_removal_check"];
+  for (const [migration, expected, reason] of [
+    [{ legacyMsiPresent: true }, false, "msi_legacy_registration_remaining"],
+    [null, null, "msi_legacy_registration_unavailable"],
+    [new Error("synthetic query failure"), null, "msi_legacy_registration_unavailable"],
+    [{ legacyMsiPresent: false }, true, null],
+  ]) {
+    const observation = {}, commands = [], readings = [];
+    const states = [absentMsi, installedMsi, absentMsi, migration];
+    const runtime = { canInstallOrRemove: () => true };
+    const install = withMsiInstallation("fixture.msi", requestedMsiRoot, observation,
+      () => commands.push("credentials"), {
+        runtime, mode: "--msi-only",
+        readRegistration(artifact, actualRuntime, operation, cleanup) {
+          assert.equal(artifact, "fixture.msi");
+          assert.equal(actualRuntime, runtime);
+          readings.push([operation, cleanup]);
+          const state = states.shift();
+          if (state instanceof Error) throw state;
+          return state;
+        },
+        invoke(action) { commands.push(action); return 0; },
+        binaries: () => presentFiles,
+      });
+    if (reason) await assert.rejects(install);
+    else await install;
+    assert.deepEqual(commands, ["/i", "credentials", "/x"]);
+    assert.deepEqual(readings, operations.map((operation, index) => [operation, index >= 2]));
+    assert.equal(observation.registrationClearAfter, true);
+    assert.equal(observation.legacyMsiClearAfter, expected);
+    assert.equal(observation.cleanupReason, reason);
+  }
 });
 
 test("installer smoke verifies MSI registration and directory before credentials and confirms removal before NSIS", async () => {
